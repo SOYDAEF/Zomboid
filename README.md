@@ -21,7 +21,7 @@ B construir | G (mantener) destruir | V lanzar botella | M minimapa | T chat | E
 (todas las teclas se pueden cambiar en Ajustes)
 
 ## Nota
-En el navegador no existe el modo online (los navegadores no permiten conexiones TCP directas).
+Ahora sí hay modo online para amigos
 
 ## Prueba de conexión entre navegadores (WebRTC)
 `rtc-test/` contiene una prueba de conexión directa entre navegadores con código de sala
