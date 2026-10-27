@@ -37,7 +37,7 @@ NOVEDADES v4
   - En los menús puedes moverte con flechas + Enter.
 
 CONTROLES (todos se pueden cambiar en Ajustes)
-  W A S D mover | Shift correr | C furtivo | Ratón apuntar | Clic izq. atacar | Clic der. apuntar pistola
+  W A S D mover | Shift correr | C furtivo | Ratón apuntar | Clic izq. atacar | Clic der. apuntar arma de fuego | E subir/bajar de un auto
   Espacio empujar | E interactuar (puertas, saqueo, beber de lagos) | F linterna | R recargar
   I inventario | Tab cambiar arma | H venda | Q comer/beber | B modo construir (1-4 elige pieza, clic construye)
   G (mantener) destruir lo que apuntas | V lanzar botella | M minimapa | T chat | Esc menú
@@ -104,6 +104,11 @@ FATAL_BITES = True          # False = las mordidas solo hacen sangrar
 BITE_CHANCE = 0.12
 INFECTION_TIME = 240.0      # segundos hasta morir tras una mordida
 
+CAR_R = 13                   # radio de colisión del auto
+CAR_MAX, CAR_REV, CAR_ACC, CAR_TURN = 330.0, -110.0, 230.0, 2.3
+N_CARS = 7 if IS_WEB else 10
+CAR_COLORS = [(190, 50, 45), (50, 100, 180), (210, 190, 60), (230, 230, 235), (60, 150, 90), (60, 60, 68)]
+
 PORT = 5555
 SNAP_HZ = 20
 INPUT_HZ = 30
@@ -137,6 +142,7 @@ ITEMS = {
     "smg":        dict(name="Subfusil", kind="weapon"),
     "shotgun":    dict(name="Escopeta", kind="weapon"),
     "rifle":      dict(name="Rifle de caza", kind="weapon"),
+    "fuel":       dict(name="Bidón de gasolina", kind="fuel"),
     "shells":     dict(name="Cartuchos", kind="ammo"),
     "rifle_ammo": dict(name="Balas de rifle", kind="ammo"),
 }
@@ -162,6 +168,7 @@ ITEM_DESC = {
     "smg": "Subfusil automático: mantén clic der. (apuntar) y clic izq. Gasta balas 9mm rápido. Muy ruidoso.",
     "shotgun": "Escopeta: dispara varios perdigones, devastadora de cerca. Usa cartuchos.",
     "rifle": "Rifle de caza: mucho alcance y atraviesa hasta 3 zombis. Usa balas de rifle.",
+    "fuel": "Gasolina: acércate a un auto y úsala para llenarle el tanque.",
     "shells": "Cartuchos para la escopeta (se cargan con Recargar).",
     "rifle_ammo": "Balas para el rifle de caza (se cargan con Recargar).",
 }
@@ -169,7 +176,7 @@ CONT_NAMES = {"fridge": "Nevera", "shelf": "Estante", "wardrobe": "Armario", "co
               "cabinet": "Gabinete", "chest": "Cofre"}
 ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
               "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
-              "bottle", "planks"]
+              "fuel", "bottle", "planks"]
 
 WEAPONS = {
     "fists": dict(name="Puños", dmg=8, rng=34, arc=2.0, cd=0.45, noise=45, targets=1, dur=None, kb=140, stam=5),
@@ -219,7 +226,7 @@ def norm_settings(d):
 
 LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "fridge":   [("canned", 3, 1, 2), ("cookies", 2, 1, 2), ("water", 3, 1, 1), ("soda", 3, 1, 2), ("bottle", 1, 1, 1)],
-    "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4),
+    "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4), ("fuel", 0.9, 1, 1),
                  ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2)],
     "wardrobe": [("bandage", 3, 1, 2), ("bat", 1, 1, 1), ("flashlight", 1, 1, 1), ("medkit", 1, 1, 1),
                  ("water", 1, 1, 1), ("planks", 1, 1, 2)],
@@ -228,10 +235,10 @@ LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "cabinet":  [("medkit", 1, 1, 1), ("bandage", 2, 1, 2), ("ammo", 2, 4, 9), ("battery", 2, 1, 1),
                  ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3),
                  ("rod", 0.5, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
-                 ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6)],
+                 ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6), ("fuel", 1.2, 1, 1)],
 }
 RARE_ITEMS = {"pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
-              "shells", "rifle_ammo"}
+              "shells", "rifle_ammo", "fuel"}
 ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad del edificio
     [(0, 22), (1, 40), (2, 28), (3, 10)],
     [(0, 12), (1, 30), (2, 38), (3, 20)],
@@ -840,7 +847,8 @@ class Player:
         self.hurt_t = 0.0
         self.msgs = []
         self.outbox = []
-        self.inp = dict(x=x, y=y, a=0.0, mv=0, run=0, aim=0, hold=0, sn=0, mx=x, my=y, dm=0)
+        self.inp = dict(x=x, y=y, a=0.0, mv=0, run=0, aim=0, hold=0, sn=0, mx=x, my=y, dm=0, dv=(0.0, 0.0))
+        self.car = None                 # id del auto que conduces (None = a pie)
         self.fix = False
         self.hurt_ev = False
         self.tx, self.ty = x, y
@@ -896,6 +904,34 @@ class Zombie:
         self.cloth = self.CLOTHES[self.cloth_i]
 
 
+class Car:
+    """Auto: lo simula el servidor (o el que juega solo). Conducción simple vista desde arriba."""
+
+    def __init__(self, cid, x, y, ang, color_i, fuel):
+        self.id, self.x, self.y, self.angle = cid, x, y, ang
+        self.v = 0.0
+        self.fuel = fuel
+        self.hp = 100.0
+        self.driver = None
+        self.ci = color_i
+        self.color = CAR_COLORS[color_i % len(CAR_COLORS)]
+        self.thr = self.steer = 0.0
+        self.noise_t = 0.0
+
+
+class CarView:
+    """Auto tal como lo ve un cliente (interpolado)."""
+
+    def __init__(self, cid, x, y, ang):
+        self.id = cid
+        self.x = self.tx = x
+        self.y = self.ty = y
+        self.angle = self.ta = ang
+        self.fuel, self.hp, self.driver, self.v = 0, 100, None, 0
+        self.ci = 0
+        self.color = CAR_COLORS[0]
+
+
 class ZView:
     """Zombi tal como lo ve un cliente (posición interpolada)."""
     max_hp = 100.0
@@ -947,6 +983,9 @@ class Game:
         self.ev_tracers, self.ev_corpses, self.ev_tiles, self.ev_loot, self.ev_fx = [], [], [], [], []
         self.ev_cont = []
         self.populate()
+        self.cars = []
+        self.next_cid = 0
+        self.populate_cars()
         if local:
             self.p = self.add_player(name)
             self.p.hat = hat if hat in HATS else "none"
@@ -984,6 +1023,7 @@ class Game:
             self.msg("Hardcore: no puedes revivir.", (255, 140, 120), p)
             return
         if not p.alive:
+            self.release_car(p.pid)
             p.reset(*self.spawn_pos())
             self.msg(f"{p.name} ha vuelto a la partida.", (200, 255, 200))
 
@@ -1084,6 +1124,166 @@ class Game:
                 continue
             self.new_zombie(x, y, "walker" if rnd.random() < 0.85 else None)
 
+    def populate_cars(self):
+        rnd, m = self.rnd, self.map
+        sx, sy = (SPAWN_TILE[0] + 0.5) * TS, (SPAWN_TILE[1] + 0.5) * TS
+        tries = 0
+        while len(self.cars) < N_CARS and tries < 4000:
+            tries += 1
+            tx, ty = rnd.randint(4, N - 5), rnd.randint(4, N - 5)
+            if m.tile(tx, ty) != ROAD:
+                continue
+            x, y = (tx + 0.5) * TS, (ty + 0.5) * TS
+            first = len(self.cars) == 0
+            dist = math.hypot(x - sx, y - sy)
+            if (first and not 250 < dist < 700) or (not first and dist < 150):
+                continue
+            if any(math.hypot(x - c.x, y - c.y) < 260 for c in self.cars) or not m.free(x, y, CAR_R + 3):
+                continue
+            opts = [(m.ray_distance(x, y, a, 300) + rnd.random() * 30, a)      # mirando hacia donde hay más calle libre
+                    for a in (0.0, math.pi / 2, math.pi, -math.pi / 2)]
+            ang = max(opts)[1]
+            self.cars.append(Car(self.next_cid, x, y, ang, rnd.randrange(len(CAR_COLORS)),
+                                 70.0 if first else rnd.uniform(10, 65)))
+            self.next_cid += 1
+
+    def car_by_id(self, cid):
+        for c in self.cars:
+            if c.id == cid:
+                return c
+        return None
+
+    def my_car(self):
+        p = self.p
+        return self.car_by_id(p.car) if p is not None and p.car is not None else None
+
+    def car_near(self, p, dist=50):
+        best = None
+        for c in self.cars:
+            if c.driver is None:
+                d = math.hypot(c.x - p.x, c.y - p.y)
+                if d <= dist and (best is None or d < best[0]):
+                    best = (d, c)
+        return best[1] if best else None
+
+    def enter_car(self, p, c):
+        p.car, c.driver = c.id, p.pid
+        p.search = p.fish = p.work = p.open = None
+        p.flash_on = False
+        p.fix = True
+        p.x, p.y, p.angle = c.x, c.y, c.angle
+        self.msg("Subiste al auto: W acelera, S frena/reversa, A/D giran. [E] para bajar.", (200, 230, 255), p)
+
+    def release_car(self, pid):
+        """El jugador deja de conducir (sin moverlo)."""
+        p = self.players.get(pid)
+        for c in self.cars:
+            if c.driver == pid:
+                c.driver, c.thr, c.steer = None, 0.0, 0.0
+        if p is not None:
+            p.car = None
+
+    def exit_car(self, p):
+        c = self.car_by_id(p.car)
+        self.release_car(p.pid)
+        if c is None:
+            return
+        for side in (math.pi / 2, -math.pi / 2, math.pi, 0.0):
+            a = c.angle + side
+            x, y = c.x + math.cos(a) * (CAR_R + PLAYER_R + 4), c.y + math.sin(a) * (CAR_R + PLAYER_R + 4)
+            if self.map.free(x, y, PLAYER_R):
+                p.x, p.y = x, y
+                break
+        else:
+            p.x, p.y = c.x, c.y
+        p.fix = True
+
+    def set_drive(self, p, thr, steer):
+        c = self.car_by_id(p.car)
+        if c is not None:
+            c.thr = max(-1.0, min(1.0, float(thr)))
+            c.steer = max(-1.0, min(1.0, float(steer)))
+
+    def refuel(self, p, c):
+        c.fuel = min(100.0, c.fuel + 45.0)
+        self.remove_item(p, "fuel")
+        self.msg(f"Llenaste el tanque ({int(c.fuel)}%).", (200, 255, 200), p)
+
+    def explode_car(self, c, d):
+        self.add_fx(c.x, c.y, "crash")
+        self.make_noise(c.x, c.y, 650)
+        for z in self.zombies:
+            if z.alive and math.hypot(z.x - c.x, z.y - c.y) < 95 and d is not None:
+                self.hit_zombie(z, 170, math.atan2(z.y - c.y, z.x - c.x), 320, d, 0.8)
+        if c in self.cars:
+            self.cars.remove(c)
+        if d is not None:
+            self.release_car(d.pid)
+            d.x, d.y, d.fix = c.x, c.y, True
+            self.hurt_player(d, 45, "Explosión del auto")
+        self.msg("¡El auto explotó!", (255, 170, 90))
+
+    def update_cars(self, dt):
+        for c in list(self.cars):
+            d = self.players.get(c.driver) if c.driver is not None else None
+            if c.driver is not None and (d is None or not d.alive):
+                self.release_car(c.driver)
+                d = None
+            thr = c.thr if d else 0.0
+            if c.fuel <= 0:
+                thr = 0.0
+            if thr:
+                if thr > 0:
+                    c.v += thr * CAR_ACC * dt * (2.0 if c.v < 0 else 1.0)
+                else:
+                    c.v += thr * CAR_ACC * dt * (2.2 if c.v > 0 else 1.0)
+                c.fuel -= abs(thr) * 2.2 * dt
+            else:
+                f = (120.0 if d else 200.0) * dt
+                c.v = 0.0 if abs(c.v) <= f else c.v - math.copysign(f, c.v)
+                if d:
+                    c.fuel -= 0.05 * dt
+            c.v = max(CAR_REV, min(CAR_MAX, c.v))
+            c.fuel = max(0.0, c.fuel)
+            if d:
+                c.angle += c.steer * CAR_TURN * max(-1.0, min(1.0, c.v / 110.0)) * dt
+            if abs(c.v) > 0.5:
+                ca, sa = math.cos(c.angle), math.sin(c.angle)
+                nx, ny = c.x + ca * c.v * dt, c.y + sa * c.v * dt
+                if self.map.free(nx, ny, CAR_R):
+                    c.x, c.y = nx, ny
+                else:
+                    ft = self.map.tile(int((c.x + ca * (CAR_R + 6)) // TS), int((c.y + sa * (CAR_R + 6)) // TS))
+                    sp = abs(c.v)
+                    if sp > 90:
+                        c.hp -= sp * 0.10
+                        self.make_noise(c.x, c.y, 320)
+                        self.add_fx(c.x + ca * CAR_R, c.y + sa * CAR_R, "crash")
+                        if d is not None and sp > 200:
+                            self.hurt_player(d, (sp - 200) * 0.12, "Choque")
+                        if ft in (DOOR_C, WINDOW) and sp > 120:
+                            self.damage_tile(int((c.x + ca * (CAR_R + 6)) // TS),
+                                             int((c.y + sa * (CAR_R + 6)) // TS), sp * 0.6, None)
+                    c.v *= -0.25 if sp > 90 else 0.0
+                # atropellar zombis
+                if d is not None and abs(c.v) > 70:
+                    for z in self.zombies:
+                        if z.alive and z.stagger < 0.2 and math.hypot(z.x - c.x, z.y - c.y) <= CAR_R + z.r + 2:
+                            self.hit_zombie(z, abs(c.v) * 0.5, c.angle, 300, d, 0.7)
+                            heavy = z.kind in ("brute", "breaker")
+                            c.v *= 0.78 if heavy else 0.965
+                            c.hp -= 6 if heavy else 1.2
+                            if not z.alive:
+                                self.add_fx(z.x, z.y, "crash")
+            if d is not None:
+                d.x, d.y, d.angle, d.moving = c.x, c.y, c.angle, False
+                c.noise_t -= dt
+                if c.noise_t <= 0:
+                    c.noise_t = 0.6
+                    self.make_noise(c.x, c.y, 120 + abs(c.v) * 0.9)
+            if c.hp <= 0:
+                self.explode_car(c, d)
+
     def manage_population(self, dt):
         """De noche aparecen zombis (nunca bajo una luz); de día desaparecen."""
         self.pop_t -= dt
@@ -1173,6 +1373,7 @@ class Game:
         for pl in list(self.players.values()):
             if pl.alive:
                 self.update_player(pl, dt, inp if pl is self.p else None)
+        self.update_cars(dt)
         self.update_zombies(dt)
         self.update_projectiles(dt)
         if alive_any:
@@ -1199,7 +1400,18 @@ class Game:
             self.move_entity(p, dx * speed * dt, dy * speed * dt, PLAYER_R)
 
     def update_player(self, p, dt, inp):
-        if p.remote:                                     # el cliente manda su posición; se valida
+        if p.car is not None:                            # conduciendo: el auto manda la posición
+            if p.remote:
+                dv = p.inp.get("dv", (0.0, 0.0))
+                self.set_drive(p, dv[0], dv[1])
+                mouse = (p.inp["mx"], p.inp["my"])
+            else:
+                mvx, mvy = inp["move"]
+                self.set_drive(p, -mvy, mvx)
+                mouse = inp["mouse"]
+            p.moving = p.sneak = p.aiming = p.running = False
+            hold = demo_held = False
+        elif p.remote:                                   # el cliente manda su posición; se valida
             i = p.inp
             p.angle = i["a"]
             p.moving = bool(i["mv"])
@@ -1319,6 +1531,8 @@ class Game:
             p.hp, p.alive, p.search, p.work = 0.0, False, None, None
             p.fish = p.open = None
             self.msg(f"{p.name} ha muerto ({p.cause or 'causa desconocida'}).", (255, 120, 120))
+            if p.car is not None:
+                self.release_car(p.pid)
             self.drop_body(p)
             if not self.revive:
                 self.msg(f"HARDCORE: {p.name} no puede revivir.", (255, 90, 90))
@@ -1341,6 +1555,8 @@ class Game:
             self.msg("Tus cosas quedaron junto a tu cuerpo.", (255, 200, 140), p)
 
     def hurt_player(self, P, dmg, cause):
+        if P.car is not None and cause == "Zombi":
+            dmg *= 0.35                                   # la carrocería te protege
         P.hp -= dmg
         P.cause = cause
         P.search = None
@@ -1471,6 +1687,8 @@ class Game:
             return
         if not p.alive:
             return
+        if p.car is not None and a not in ("interact", "hat"):
+            return                                        # conduciendo: solo puedes bajar
         if a == "click":
             self.on_click(p)
         elif a == "shove":
@@ -2016,6 +2234,12 @@ class Game:
             p.battery = 100.0
             self.remove_item(p, item)
             self.msg("Cambiaste las pilas.", (200, 220, 255), p)
+        elif kind == "fuel":
+            car = self.car_near(p, 70)
+            if car:
+                self.refuel(p, car)
+            else:
+                self.msg("Acércate a un auto para echarle gasolina.", (200, 200, 200), p)
         elif kind == "ammo":
             self.msg("La munición se carga con la tecla de recargar (con el arma de fuego equipada).",
                      (200, 200, 200), p)
@@ -2086,6 +2310,12 @@ class Game:
 
     def interact_text(self, p=None):
         p = p or self.p
+        if p.car is not None:
+            return "[E] Bajar del auto"
+        car = self.car_near(p)
+        if car:
+            return f"[E] Subir al auto  (gasolina {int(car.fuel)}%)" + ("  - usa un bidón para llenarlo"
+                                                                       if car.fuel < 15 else "")
         gnd = self.find_ground(p)
         b = self.find_interact(p)
         if gnd and (not b or gnd[0] <= b[0]):
@@ -2104,6 +2334,13 @@ class Game:
         return f"[E] Abrir {name.lower()}" + (" (vacío)" if c and c["looted"] else "")
 
     def interact(self, p):
+        if p.car is not None:
+            self.exit_car(p)
+            return
+        car = self.car_near(p)
+        if car:
+            self.enter_car(p, car)
+            return
         gnd = self.find_ground(p)
         b = self.find_interact(p)
         if gnd and (not b or gnd[0] <= b[0]):
@@ -2447,7 +2684,9 @@ class Server:
                 v = dict(x=float(m["x"]), y=float(m["y"]), a=float(m["a"]), mv=int(m["mv"]),
                          run=int(m["run"]), aim=int(m["aim"]), hold=int(m["hold"]), sn=int(m["sn"]),
                          mx=float(m["mx"]), my=float(m["my"]), dm=int(m["dm"]))
-            except (KeyError, ValueError, TypeError):
+                dv = m.get("dv") or (0, 0)
+                v["dv"] = (max(-1.0, min(1.0, float(dv[0]))), max(-1.0, min(1.0, float(dv[1]))))
+            except (KeyError, ValueError, TypeError, IndexError):
                 return
             if all(math.isfinite(v[k]) for k in ("x", "y", "a", "mx", "my")):
                 p.inp = v
@@ -2464,6 +2703,7 @@ class Server:
             c.close()
         p = self.game.players.pop(pid, None)
         if p:
+            self.game.release_car(pid)
             self.game.msg(f"{p.name} se desconectó.", (255, 190, 90))
 
     def snapshot(self, pl):
@@ -2474,7 +2714,7 @@ class Server:
                   fl=int(pl.flash_on), bat=round(pl.battery, 1), k=pl.kills, al=int(pl.alive),
                   cs=pl.cause, rl=round(pl.reload_t, 2), inv=pl.inv, cond=pl.cond,
                   se=pl.search, wk=pl.work, sw=int(pl.swing_t > 0), hu=int(pl.hurt_ev),
-                  fs=pl.fish, hat=pl.hat)
+                  fs=pl.fish, hat=pl.hat, car=-1 if pl.car is None else pl.car)
         if pl.open and pl.open in g.map.containers:
             c = g.map.containers[pl.open]
             me["cv"] = [pl.open[0], pl.open[1], c["kind"], c["inv"]]
@@ -2497,8 +2737,11 @@ class Server:
                if abs(pr[0] - pl.x) < VIEW_R and abs(pr[1] - pl.y) < VIEW_R]
         gi = [[it[4], round(it[0]), round(it[1]), it[2], it[3]] for it in g.items.values()
               if abs(it[0] - pl.x) < VIEW_R and abs(it[1] - pl.y) < VIEW_R][:120]
+        cars = [[c.id, round(c.x, 1), round(c.y, 1), round(c.angle, 2), int(c.fuel), int(c.hp),
+                 -1 if c.driver is None else c.driver, c.ci, int(c.v)]
+                for c in g.cars if abs(c.x - pl.x) < VIEW_R + 200 and abs(c.y - pl.y) < VIEW_R + 200]
         msgs, pl.outbox = pl.outbox, []
-        return {"t": "snap", "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "msg": msgs,
+        return {"t": "snap", "cars": cars, "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "msg": msgs,
                 "ev": {"tr": g.ev_tracers, "co": g.ev_corpses, "ti": g.ev_tiles, "lo": g.ev_loot,
                        "fx": g.ev_fx, "ct": g.ev_cont}}
 
@@ -2755,6 +2998,8 @@ class ClientGame(Game):
         self.projs = []
         self.fx = []
         self.set_settings(welcome.get("gs"))
+        self.cars = []
+        self._cmap = {}
         self.minutes = float(welcome["m"])
         self.shake = 0.0
         self.items = {}
@@ -2768,11 +3013,18 @@ class ClientGame(Game):
         self.tick_effects(dt)
         self.minutes += dt * GAME_MIN_PER_SEC * self.tmul
         p = self.p
-        if p.alive:
+        k = min(1.0, dt * 14)
+        for c in self.cars:
+            c.x += (c.tx - c.x) * k
+            c.y += (c.ty - c.y) * k
+            c.angle += ((c.ta - c.angle + math.pi) % math.tau - math.pi) * k
+        mine = self.my_car()
+        if p.alive and mine is None:
             self.control_move(p, dt, inp)
+        elif p.alive:
+            p.x, p.y, p.angle, p.moving = mine.x, mine.y, mine.angle, False
         p.swing_t -= dt
         p.hurt_t -= dt
-        k = min(1.0, dt * 14)
         for z in self.zombies:
             z.x += (z.tx - z.x) * k
             z.y += (z.ty - z.y) * k
@@ -2794,6 +3046,8 @@ class ClientGame(Game):
         p.open = (cv[0], cv[1]) if cv else None
         p.cview = cv
         self.items = {g[0]: [g[1], g[2], g[3], g[4], g[0]] for g in s.get("gi", [])}
+        cid = me.get("car", -1)
+        p.car = None if cid < 0 else cid
         if "fx" in me:
             p.x, p.y = me["fx"]
         if me["sw"]:
@@ -2830,6 +3084,17 @@ class ClientGame(Game):
             new.append(z)
         self.zombies, self._zmap = new, zm
         self.projs = [[x, y, 0, 0, 0, k, 0] for x, y, k in s.get("pr", [])]
+        cm, cnew = {}, []
+        for cid2, x, y, a, fu, hp, dr, ci, v in s.get("cars", []):
+            c = self._cmap.get(cid2)
+            if c is None:
+                c = CarView(cid2, x, y, a)
+            c.tx, c.ty, c.ta = x, y, a
+            c.fuel, c.hp, c.driver, c.ci, c.v = fu, hp, (None if dr < 0 else dr), ci, v
+            c.color = CAR_COLORS[ci % len(CAR_COLORS)]
+            cm[cid2] = c
+            cnew.append(c)
+        self.cars, self._cmap = cnew, cm
 
         for text, col in s["msg"]:
             p.msgs.append([text, 5.0, tuple(col)])
@@ -3797,7 +4062,8 @@ class App:
                          "mv": int(p.moving), "run": int(bool(inp["run"])), "aim": int(bool(inp["aim"])),
                          "hold": int(bool(inp["attack_held"])), "sn": int(self.sneak),
                          "mx": round(self.mouse_world[0], 1), "my": round(self.mouse_world[1], 1),
-                         "dm": int(bool(inp["demolish"]))})
+                         "dm": int(bool(inp["demolish"])),
+                         "dv": [-inp["move"][1], inp["move"][0]] if p.car is not None else [0, 0]})
         else:
             if self.server:
                 self.server.poll(dt)
@@ -3831,12 +4097,17 @@ class App:
             if done:
                 break
         self.draw_ground_items(ox, oy)
+        for c in g.cars:
+            if -60 < c.x - ox < W + 60 and -60 < c.y - oy < H + 60:
+                self.draw_car(c, ox, oy)
+        drivers = {c.driver for c in g.cars if c.driver is not None}
         for z in g.zombies:
             if -30 < z.x - ox < W + 30 and -30 < z.y - oy < H + 30:
                 self.draw_zombie(z, ox, oy)
         for o in g.other_players():
-            self.draw_player(o, ox, oy, local=False)
-        if p.alive:
+            if o.pid not in drivers:
+                self.draw_player(o, ox, oy, local=False)
+        if p.alive and p.car is None:
             self.draw_player(p, ox, oy, local=True)
 
         for x1, y1, x2, y2, col, width, _ in g.tracers:
@@ -3910,6 +4181,29 @@ class App:
                              (bx, by, int(TS * max(0.0, min(1.0, prog))), 6))
             pygame.draw.rect(s, (255, 255, 255), (tx * TS - ox, ty * TS - oy, TS, TS), 1)
 
+    def draw_car(self, c, ox, oy):
+        s = self.screen
+        x, y = c.x - ox, c.y - oy
+        ca, sa = math.cos(c.angle), math.sin(c.angle)
+
+        def pt(f, l):                                       # f = adelante, l = lado
+            return (x + ca * f - sa * l, y + sa * f + ca * l)
+        pygame.draw.polygon(s, (20, 20, 24), [pt(19, -11), pt(19, 11), pt(-19, 11), pt(-19, -11)])
+        for f in (-11, 11):                                  # ruedas
+            for l in (-11, 11):
+                pygame.draw.circle(s, (12, 12, 14), (int(pt(f, l)[0]), int(pt(f, l)[1])), 4)
+        body = c.color if c.hp > 30 else tuple(int(v * 0.6) for v in c.color)
+        pygame.draw.polygon(s, body, [pt(17, -9), pt(17, 9), pt(-17, 9), pt(-17, -9)])
+        pygame.draw.polygon(s, (30, 38, 52), [pt(7, -7), pt(7, 7), pt(-3, 7), pt(-3, -7)])   # parabrisas y techo
+        pygame.draw.polygon(s, tuple(int(v * 0.8) for v in body), [pt(-3, -7), pt(-3, 7), pt(-13, 7), pt(-13, -7)])
+        for l in (-6, 6):
+            pygame.draw.circle(s, (255, 245, 190), (int(pt(17, l)[0]), int(pt(17, l)[1])), 2)
+        if c.hp < 40:                                         # humo del motor
+            for k in range(3):
+                pygame.draw.circle(s, (70 + 20 * k, 70 + 20 * k, 70 + 20 * k),
+                                   (int(pt(20 + 5 * k, 0)[0] + math.sin(self.t * 6 + k) * 3),
+                                    int(pt(20 + 5 * k, 0)[1] - 4 * k)), 3 + k)
+
     def draw_zombie(self, z, ox, oy):
         sc = self.screen
         x, y, r = int(z.x - ox), int(z.y - oy), z.r
@@ -3981,6 +4275,13 @@ class App:
                 rot = pygame.transform.rotate(self.cone, -math.degrees(pl.angle))
                 lo.blit(rot, (int(sx - rot.get_width() / 2), int(sy - rot.get_height() / 2)),
                         special_flags=pygame.BLEND_RGB_ADD)
+        for c in g.cars:                                  # faros de los autos con conductor
+            if c.driver is not None and c.fuel > 0:
+                sx, sy = (c.x - cam[0]) / LQ, (c.y - cam[1]) / LQ
+                if -300 < sx < W / LQ + 300 and -300 < sy < H / LQ + 300:
+                    rot = pygame.transform.rotate(self.cone, -math.degrees(c.angle))
+                    lo.blit(rot, (int(sx - rot.get_width() / 2), int(sy - rot.get_height() / 2)),
+                            special_flags=pygame.BLEND_RGB_ADD)
         fps = self.clock.get_fps()
         if fps:                                           # histéresis: si va lento, escala sin suavizar
             if fps < 22:
@@ -4039,6 +4340,13 @@ class App:
             wtxt = w["name"] + (f"  {p.cond.get(p.weapon, w['dur'])}/{w['dur']}" if w["dur"] else "")
         mtag = "" if g.settings["mode"] == "normal" else f"   [{MODES[g.settings['mode']]['name'].upper()}]"
         self.text(f"Día {g.day()}   {g.clock()}{mtag}", 34, (14, 10), (255, 235, 150))
+        car = g.my_car()
+        if car:
+            wtxt = f"Conduciendo  {abs(int(car.v * 0.11))} km/h"
+            self.bar(W - 214, H - 72, "Gasolina", car.fuel, (230, 170, 50))
+            self.bar(W - 214, H - 50, "Carrocería", car.hp, (170, 170, 190))
+            if car.fuel <= 0:
+                self.text("SIN GASOLINA", 40, (W // 2, 90), (255, 120, 90), center=True)
         self.text("Arma: " + wtxt, 24, (14, 40), (230, 230, 240))
         self.text(f"Tablones: {p.inv.get('planks', 0)}", 22, (14, 62), (215, 190, 140))
         if p.flash_on:
