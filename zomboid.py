@@ -2281,6 +2281,10 @@ class Server:
             except OSError:
                 break
             self.pending.append(Conn(s))
+        self.service()
+
+    def service(self):
+        """Atiende a los clientes ya conectados (sirve igual para sockets y para WebRTC)."""
         for c in list(self.pending):
             c.pump()
             for m in c.messages():
@@ -2388,7 +2392,7 @@ class Server:
         g = self.game
         for pid, c in list(self.clients.items()):
             p = g.players.get(pid)
-            if p is not None and not c.dead:
+            if p is not None and not c.dead and not getattr(c, "congested", lambda: False)():
                 c.send(self.snapshot(p))
                 c.pump()
         g.clear_events()
@@ -2433,6 +2437,187 @@ class Client:
 
     def close(self):
         self.conn.close()
+
+
+# ----------------------------------------------------------------------------
+# Red para el navegador: WebRTC a través de znet.js (sin sockets TCP)
+# ----------------------------------------------------------------------------
+_ZNET = None
+
+
+def get_znet():
+    """Devuelve el objeto JavaScript ZNet (znet.js), cargándolo la primera vez (solo en el navegador)."""
+    global _ZNET
+    if _ZNET is None:
+        import platform
+        win = platform.window
+        if str(win.eval("typeof window.ZNet")) != "object":
+            import znet_js
+            win.eval(znet_js.SOURCE)
+        _ZNET = win.ZNet
+    return _ZNET
+
+
+class WebConn:
+    """Igual que Conn, pero los mensajes viajan por un canal WebRTC."""
+
+    def __init__(self, hub, peer_id):
+        self.hub = hub
+        self.id = peer_id
+        self.inq = []
+        self.dead = False
+        self.pid = None
+        self.t0 = time.time()
+
+    def send(self, obj):
+        if not self.dead:
+            self.hub.send_to(self.id, json.dumps(obj, separators=(",", ":")))
+
+    def pump(self):
+        pass
+
+    def messages(self):
+        out, self.inq = self.inq, []
+        return out
+
+    def congested(self):
+        try:
+            return int(self.hub.z.buffered()) > 300000      # el otro jugador va lento: saltamos snapshots
+        except Exception:
+            return False
+
+    def close(self):
+        self.dead = True
+
+
+class WebServer(Server):
+    """Servidor que corre en el navegador del anfitrión; los jugadores entran con un código de sala."""
+
+    def __init__(self, game, znet=None):
+        self.game = game
+        self.port = 0
+        self.pending = []
+        self.clients = {}
+        self.snap_t = 0.0
+        self.label = "Partida"
+        self.beacon = None
+        self.z = znet or get_znet()
+        self.code = str(self.z.host())
+        self.conns = {}
+
+    def send_to(self, peer_id, text):
+        self.z.send(text, peer_id)
+
+    def close(self):
+        for c in list(self.clients.values()) + self.pending:
+            c.close()
+        try:
+            self.z.close()
+        except Exception:
+            pass
+
+    def drain(self):
+        for _ in range(400):                                 # límite por fotograma
+            raw = str(self.z.pop())
+            if not raw:
+                break
+            try:
+                m = json.loads(raw)
+            except ValueError:
+                continue
+            pid = m.get("from")
+            if m.get("sys") == "join":
+                c = WebConn(self, pid)
+                self.conns[pid] = c
+                self.pending.append(c)
+            elif m.get("sys") == "leave":
+                c = self.conns.pop(pid, None)
+                if c:
+                    c.dead = True
+            elif "data" in m:
+                c = self.conns.get(pid)
+                if c:
+                    try:
+                        c.inq.append(json.loads(m["data"]))
+                    except ValueError:
+                        pass
+
+    def poll(self, dt):
+        self.drain()
+        self.service()
+
+
+class WebClient:
+    """Cliente que entra a una sala con su código. La conexión es asíncrona: se avanza con advance()."""
+
+    def __init__(self, code, name, hat="none", znet=None):
+        self.z = znet or get_znet()
+        self.name, self.hat = name, hat
+        self.conn = WebConn(self, "host")
+        self.hello_sent = False
+        self.welcome = None
+        self.backlog = []
+        self.t_start = time.time()
+        self.z.join(str(code))
+
+    def send_to(self, peer_id, text):
+        self.z.send(text, "")
+
+    def _drain(self):
+        for _ in range(400):
+            raw = str(self.z.pop())
+            if not raw:
+                break
+            try:
+                m = json.loads(raw)
+            except ValueError:
+                continue
+            if m.get("sys") == "leave":
+                self.conn.dead = True
+            elif "data" in m:
+                try:
+                    self.conn.inq.append(json.loads(m["data"]))
+                except ValueError:
+                    pass
+        if str(self.z.status()).startswith("error"):
+            self.conn.dead = True
+
+    def advance(self):
+        """Devuelve 'wait', 'ok' o un texto de error."""
+        st = str(self.z.status())
+        if st.startswith("error"):
+            return st[6:] or "error de conexión"
+        if time.time() - self.t_start > 60:
+            return "tiempo de espera agotado"
+        if st == "connected" and not self.hello_sent:
+            self.hello_sent = True
+            self.conn.send({"t": "hello", "name": self.name, "v": 4, "hat": self.hat})
+        self._drain()
+        msgs = self.conn.messages()
+        for i, m in enumerate(msgs):
+            if m.get("t") == "welcome":
+                self.welcome = m
+                self.backlog = msgs[i + 1:]
+                return "ok"
+            if m.get("t") == "full":
+                return "la partida está llena"
+        return "wait"
+
+    def send(self, obj):
+        self.conn.send(obj)
+
+    def poll(self):
+        self._drain()
+        msgs = self.backlog + self.conn.messages()
+        self.backlog = []
+        return msgs
+
+    def close(self):
+        self.conn.dead = True
+        try:
+            self.z.close()
+        except Exception:
+            pass
 
 
 class ClientGame(Game):
@@ -2577,6 +2762,7 @@ ITEM_COLORS = {"weapon": (205, 205, 215), "food": (225, 150, 60), "drink": (80, 
                "material": (170, 125, 70)}
 
 FIELD_RULES = {                      # campo -> (caracteres permitidos o None, longitud máxima)
+    "room": ("ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjklmnpqrstuvwxyz", 6),
     "name": (None, 14), "port": ("0123456789", 5), "seed": (None, 20), "sseed": (None, 20),
     "ip": ("0123456789.:abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ-", 40),
 }
@@ -2603,7 +2789,9 @@ class App:
         self.build_mode = False
         self.build_piece = 0
         self.inv_rows = []
-        self.fields = dict(name=self.cfg["name"], port=str(self.cfg["port"]), seed="", sseed="", ip="127.0.0.1")
+        self.fields = dict(name=self.cfg["name"], port=str(self.cfg["port"]), seed="", sseed="", ip="127.0.0.1",
+                           room="")
+        self.room_code = ""
         self.focus = None
         self.rebind = None
         self.net_msg = ""
@@ -2888,8 +3076,7 @@ class App:
         if self.ui_btn(bx, 270, 380, 62, "Jugar solo", pygame.K_1):
             self.state = "solo"
             self.focus = None
-        if self.ui_btn(bx, 345, 380, 62, "Modo online (solo en PC)" if IS_WEB else "Modo online", pygame.K_2,
-                       enabled=not IS_WEB):
+        if self.ui_btn(bx, 345, 380, 62, "Modo online", pygame.K_2):
             self.state = "online"
             self.focus = None
         if self.ui_btn(bx, 420, 380, 62, "Ajustes", pygame.K_3):
@@ -2914,7 +3101,78 @@ class App:
             self.state = "title"
             self.focus = None
 
+    def start_host_web(self):
+        self.stop_net()
+        game = Game(seed=parse_seed(self.fields["seed"]), name=self.name, hat=self.cfg["hat"])
+        try:
+            self.server = WebServer(game)
+        except Exception as ex:
+            self.net_msg = f"No se pudo crear la sala: {ex}"
+            self.state = "online"
+            return
+        self.server.label = f"Partida de {self.name}"
+        self.begin(game, "host")
+
+    def start_join_web(self, code):
+        self.stop_net()
+        code = "".join(ch for ch in code.upper() if ch.isalnum())
+        if len(code) != 6:
+            self.net_msg = "El código de sala tiene 6 caracteres."
+            return
+        try:
+            self.client = WebClient(code, self.name, self.cfg["hat"])
+        except Exception as ex:
+            self.net_msg = f"No se pudo conectar: {ex}"
+            return
+        self.room_code = code
+        self.net_msg = ""
+        self.state = "connecting"
+
+    def draw_connecting(self):
+        self.draw_menu_bg()
+        self.ui_panel(W // 2 - 300, 200, 600, 260)
+        self.text("CONECTANDO...", 56, (W // 2, 250), (255, 220, 120), center=True)
+        self.text(f"Sala {self.room_code}", 40, (W // 2, 310), (255, 255, 255), center=True)
+        self.text("Buscando al anfitrión (puede tardar unos segundos)", 24, (W // 2, 355), (190, 195, 215), center=True)
+        cl = self.client
+        res = cl.advance() if cl else "cancelado"
+        if res == "ok":
+            self.begin(ClientGame(cl.welcome), "client")
+            return
+        if res != "wait":
+            self.stop_net()
+            self.net_msg = f"No se pudo conectar: {res}"
+            self.state = "online"
+            return
+        if self.ui_btn(W // 2 - 120, 390, 240, 50, "Cancelar", pygame.K_ESCAPE, size=30):
+            self.stop_net()
+            self.state = "online"
+
+    def draw_online_web(self):
+        self.draw_menu_bg()
+        self.text("MODO ONLINE", 64, (W // 2, 60), (255, 220, 120), center=True)
+        self.ui_field("name", W // 2 - 200, 100, 400, "Tu nombre")
+        self.ui_panel(40, 190, 500, 300)
+        self.text("CREAR SALA (anfitrión)", 34, (60, 205), (170, 255, 190))
+        self.ui_field("seed", 60, 250, 460, "Semilla (opcional)")
+        self.text("Recibirás un código de 6 caracteres para tus amigos.", 22, (60, 345), (170, 175, 195))
+        self.text("Deja esta pestaña abierta y visible mientras juegan.", 22, (60, 370), (255, 200, 120))
+        if self.ui_btn(60, 410, 460, 64, "Crear sala y jugar", None, color=(50, 120, 70)):
+            self.start_host_web()
+        self.ui_panel(560, 190, 500, 300)
+        self.text("UNIRSE A UNA SALA", 34, (580, 205), (170, 200, 255))
+        self.ui_field("room", 580, 250, 460, "Código de sala (6 caracteres)")
+        self.text("Pídele el código al anfitrión.", 22, (580, 345), (170, 175, 195))
+        if self.ui_btn(580, 410, 460, 64, "Unirse", None, color=(55, 90, 150)):
+            self.start_join_web(self.fields["room"])
+        if self.ui_btn(W // 2 - 150, 530, 300, 54, "Volver", pygame.K_ESCAPE, size=32):
+            self.state = "title"
+            self.focus = None
+        self.text(self.net_msg, 28, (W // 2, 620), (255, 170, 130), center=True)
+
     def draw_online(self):
+        if IS_WEB:
+            return self.draw_online_web()
         self.draw_menu_bg()
         self.text("MODO ONLINE", 64, (W // 2, 60), (255, 220, 120), center=True)
         self.ui_field("name", W // 2 - 200, 100, 400, "Tu nombre")
@@ -3614,7 +3872,10 @@ class App:
         if self.mode != "solo":
             n = len(g.other_players()) + 1
             if self.mode == "host":
-                info = f"ONLINE - anfitrión {self.my_ip}:{self.server.port} - {n} jugador(es)"
+                if getattr(self.server, "code", ""):
+                    info = f"ONLINE - código de sala: {self.server.code} - {n} jugador(es)"
+                else:
+                    info = f"ONLINE - anfitrión {self.my_ip}:{self.server.port} - {n} jugador(es)"
             else:
                 info = f"ONLINE - {n} jugador(es)   (chat, Esc menú)"
             self.text(info, 22, (W // 2, 14), (170, 230, 255), center=True)
@@ -3794,6 +4055,8 @@ class App:
             self.draw_solo()
         elif st == "online":
             self.draw_online()
+        elif st == "connecting":
+            self.draw_connecting()
         elif st == "settings":
             self.draw_settings()
         elif st == "play":

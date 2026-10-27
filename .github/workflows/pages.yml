@@ -24,10 +24,14 @@ jobs:
           python-version: "3.12"
       - name: Instalar pygbag
         run: python -m pip install pygbag
+      - name: Empaquetar znet.js dentro del juego
+        run: python tools/gen_znet.py
       - name: Construir la versión web
         run: python -m pygbag --build "$GITHUB_WORKSPACE"
       - name: Añadir la página de prueba de WebRTC
-        run: cp -r rtc-test build/web/rtc-test
+        run: |
+          cp -r rtc-test build/web/rtc-test
+          cp znet.js build/web/rtc-test/znet.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
