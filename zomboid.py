@@ -1362,8 +1362,62 @@ class Game:
                 if c.noise_t <= 0:
                     c.noise_t = 0.6
                     self.make_noise(c.x, c.y, 120 + abs(c.v) * 0.9)
+            if d is not None and abs(c.v) > 100:                 # atropellar a jugadores a pie
+                for pl in self.players.values():
+                    if pl is d or not pl.alive or pl.car is not None or pl.hurt_t > 0:
+                        continue
+                    if math.hypot(pl.x - c.x, pl.y - c.y) <= CAR_R + 10:
+                        self.hurt_player(pl, (abs(c.v) - 60) * 0.12, "Atropellado")
+                        c.v *= 0.9
+                        self.add_fx(pl.x, pl.y, "crash")
             if c.hp <= 0:
                 self.explode_car(c, d)
+        self.car_collisions()
+
+    def car_collisions(self):
+        """Los autos chocan entre sí: se separan, se frenan, se dañan y avisan con ruido."""
+        cs = self.cars
+        rr = CAR_R * 2 + 2
+        for i in range(len(cs)):
+            a = cs[i]
+            for j in range(i + 1, len(cs)):
+                b = cs[j]
+                dx, dy = b.x - a.x, b.y - a.y
+                dist = math.hypot(dx, dy)
+                if dist >= rr:
+                    continue
+                if dist < 0.01:
+                    dx, dy, dist = 1.0, 0.0, 1.0
+                nx, ny = dx / dist, dy / dist
+                avx, avy = math.cos(a.angle) * a.v, math.sin(a.angle) * a.v
+                bvx, bvy = math.cos(b.angle) * b.v, math.sin(b.angle) * b.v
+                rel = (avx - bvx) * nx + (avy - bvy) * ny          # > 0: se están acercando
+                push = rr - dist
+                for car, sg in ((a, -1.0), (b, 1.0)):                # separar a los dos
+                    x2, y2 = car.x + nx * push * 0.55 * sg, car.y + ny * push * 0.55 * sg
+                    if self.map.free(x2, y2, CAR_R):
+                        car.x, car.y = x2, y2
+                    else:                                            # contra un muro: que se mueva solo el otro
+                        o = b if car is a else a
+                        x3, y3 = o.x - nx * push * 1.1 * sg, o.y - ny * push * 1.1 * sg
+                        if self.map.free(x3, y3, CAR_R):
+                            o.x, o.y = x3, y3
+                if rel > 25:
+                    ma = avx * math.cos(b.angle) + avy * math.sin(b.angle)     # empuje de A sobre B
+                    mb = bvx * math.cos(a.angle) + bvy * math.sin(a.angle)
+                    a.v = max(CAR_REV, min(CAR_MAX, a.v * 0.3 + mb * 0.55))
+                    b.v = max(CAR_REV, min(CAR_MAX, b.v * 0.3 + ma * 0.55))
+                    if rel > 90:
+                        dmg = rel * 0.09
+                        a.hp -= dmg
+                        b.hp -= dmg
+                        mx, my = (a.x + b.x) / 2, (a.y + b.y) / 2
+                        self.make_noise(mx, my, 340)
+                        self.add_fx(mx, my, "crash")
+                        for car in (a, b):
+                            dr = self.players.get(car.driver) if car.driver is not None else None
+                            if dr is not None and rel > 200:
+                                self.hurt_player(dr, (rel - 200) * 0.12, "Choque")
 
     def manage_population(self, dt):
         """De noche aparecen zombis (nunca bajo una luz); de día desaparecen."""
@@ -3257,6 +3311,94 @@ FIELD_RULES = {                      # campo -> (caracteres permitidos o None, l
 }
 
 
+ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+FP_LV = 8                    # niveles de brillo que se guardan en caché
+
+
+class FPArt:
+    """Imágenes de la vista en primera persona (carpeta assets/). Si faltan, se usa el dibujo plano."""
+    WALLS = {WALL: "brick", DOOR_C: "door", WINDOW: "window", TREE: "tree"}
+
+    def __init__(self):
+        self.img, self.cols, self.cache, self.sky, self.spr, self.hands = {}, {}, {}, {}, {}, {}
+        self.ok = False
+        try:
+            for n in ("brick", "door", "window", "tree"):
+                self.img[n] = self.load(n)
+            self.sky_src = self.load("sky")
+            self.ok = True
+        except Exception:
+            self.ok = False
+
+    @staticmethod
+    def load(name):
+        sf = pygame.image.load(os.path.join(ASSET_DIR, name + ".png"))
+        try:
+            return sf.convert_alpha()
+        except Exception:
+            return sf
+
+    @staticmethod
+    def level(sh):
+        return max(1, min(FP_LV, int(sh * FP_LV + 0.5)))
+
+    @staticmethod
+    def dim(sf, lvl, tint=False):
+        if lvl < FP_LV:
+            v = int(255 * lvl / FP_LV)
+            sf.fill((v, v, min(255, v + 14) if tint else v), special_flags=pygame.BLEND_RGB_MULT)
+        return sf
+
+    def strips(self, name, lvl):
+        k = (name, lvl)
+        r = self.cols.get(k)
+        if r is None:
+            sf = self.dim(self.img[name].copy(), lvl)
+            w, h = sf.get_size()
+            r = [sf.subsurface((i, 0, 1, h)) for i in range(w)]
+            self.cols[k] = r
+        return r
+
+    def sprite(self, name, h, lvl):
+        h = int(min(h, 1300))
+        if h < 6:
+            return None
+        h = h if h < 64 else h // max(2, h // 32) * max(2, h // 32)
+        k = (name, h, lvl)
+        sf = self.cache.get(k)
+        if sf is None:
+            src = self.spr.get(name)
+            if src is None:
+                try:
+                    src = self.spr[name] = self.load(name)
+                except Exception:
+                    return None
+            if len(self.cache) > 400:
+                self.cache.clear()
+            sf = self.dim(pygame.transform.smoothscale(src, (max(2, h // 2), h)), lvl)
+            self.cache[k] = sf
+        return sf
+
+    def hand(self, name, lvl):
+        k = (name, lvl)
+        sf = self.hands.get(k)
+        if sf is None:
+            try:
+                sf = self.dim(self.load("hand_" + name).copy(), lvl)
+            except Exception:
+                return None
+            self.hands[k] = sf
+        return sf
+
+    def sky_surface(self, lvl):
+        sf = self.sky.get(lvl)
+        if sf is None:
+            sf = pygame.transform.smoothscale(self.sky_src, (W * 3, int(H * 0.9)))
+            self.dim(sf, lvl, True)
+            self.sky[lvl] = sf
+        return sf
+
+
 class App:
     def __init__(self, auto=None):
         pygame.init()
@@ -3264,7 +3406,12 @@ class App:
         self.cfg = load_cfg()
         self.gs = self.cfg["game"]
         self.fp = bool(self.cfg.get("fp", False))          # vista en primera persona (prueba)
+        self.fp_art = None
         self.fp_ang = 0.0
+        self.mouse_dy = 0.0
+        self.fp_pitch = 0.0                     # mirar arriba/abajo (píxeles que se mueve el horizonte)
+        self.fp_cw = FP_COLW                    # ancho de columna actual (se adapta al rendimiento)
+        self.fp_avg, self.fp_ct = 0.016, 0.0
         self.mouse_dx = 0.0
         self._grab = False
         self.last_dt = 0.016
@@ -3936,6 +4083,8 @@ class App:
         self.fp = bool(fp)
         self.cfg["fp"] = self.fp
         save_cfg(self.cfg)
+        self.mouse_dx = self.mouse_dy = 0.0
+        self.fp_pitch = 0.0
         if self.game is not None and self.game.p is not None:
             self.fp_ang = self.game.p.angle
 
@@ -3957,7 +4106,14 @@ class App:
         if not locked and p.car is None:
             turn = (k[pygame.K_RIGHT] - k[pygame.K_LEFT]) * 2.4 * self.last_dt + self.mouse_dx * 0.0028
             self.fp_ang = (self.fp_ang + turn) % math.tau
+        if not locked:                                          # mirar arriba/abajo: ratón, RePág/AvPág, Inicio centra
+            kp = (k[pygame.K_PAGEUP] - k[pygame.K_PAGEDOWN]) * 320.0 * self.last_dt
+            self.fp_pitch -= self.mouse_dy * 0.9 - kp
+            if k[pygame.K_HOME]:
+                self.fp_pitch *= 0.8
+            self.fp_pitch = max(-H * 0.36, min(H * 0.36, self.fp_pitch))
         self.mouse_dx = 0.0
+        self.mouse_dy = 0.0
         if p.car is not None:
             self.fp_ang = p.angle
         a = self.fp_ang
@@ -4368,6 +4524,18 @@ class App:
     def draw_fp(self):
         s, g = self.screen, self.game
         p, m = g.p, g.map
+        if self.fp_art is None:
+            self.fp_art = FPArt()
+        art = self.fp_art if self.fp_art.ok else None
+        # rendimiento: si va lento se usan columnas más anchas; si sobra, más finas
+        self.fp_avg += (self.last_dt - self.fp_avg) * 0.05
+        self.fp_ct += self.last_dt
+        if self.fp_ct > 0.6:
+            self.fp_ct = 0.0
+            if self.fp_avg > 1 / 30 and self.fp_cw < 12:
+                self.fp_cw += 2
+            elif self.fp_avg < 1 / 52 and self.fp_cw > FP_COLW:
+                self.fp_cw -= 2
         ang = p.angle
         dirx, diry = math.cos(ang), math.sin(ang)
         planex, planey = -diry * FP_PLANE, dirx * FP_PLANE
@@ -4377,33 +4545,46 @@ class App:
         torch = (p.flash_on and p.battery > 0) or (car is not None and car.fuel > 0)
         oy = int(random.uniform(-3, 3) * min(1.0, g.shake * 4)) if g.shake > 0 else 0
         bob = int(math.sin(self.t * 9) * 4) if (p.moving and p.car is None) else 0
-        hor = H // 2 + oy + bob
+        hor = int(H // 2 + oy + bob + self.fp_pitch)
         # cielo (o techo) y suelo
         if inside:
             top = self.fp_c((70, 62, 58), 1 - 0.85 * dark)
             ground = (112, 86, 62)
+            s.fill(top)
         else:
             f = 1 - dark
             top = (int(8 + 120 * f), int(10 + 166 * f), int(22 + 204 * f))
             t_ground = m.tile(int(p.x // TS), int(p.y // TS))
             ground = (84, 84, 90) if t_ground == ROAD else (66, 98, 56)
-        s.fill(top)
+            s.fill(top)
+            if art:
+                sk = art.sky_surface(max(1, min(FP_LV, int(math.ceil((1 - 0.92 * dark) * FP_LV)))))
+                sw = sk.get_width()
+                off = int((ang % math.tau) / math.tau * sw)
+                ty = hor - sk.get_height()
+                s.blit(sk, (-off, ty))
+                s.blit(sk, (sw - off, ty))
         gcol = self.fp_c(ground, 0.25 + 0.75 * (1 - dark) if dark < 1 else 0.12)
         horizon_col = self.fp_c(ground, (0.55 if dark < 0.5 else 0.2))
         bands = 10
-        for i in range(bands):
-            y0 = hor + (H - hor) * i // bands
-            y1 = hor + (H - hor) * (i + 1) // bands
-            t = i / (bands - 1)
-            col = tuple(int(horizon_col[j] + (gcol[j] - horizon_col[j]) * t) for j in range(3))
-            pygame.draw.rect(s, col, (0, y0, W, y1 - y0 + 1))
+        fl = H - hor
+        if fl > 0:
+            for i in range(bands):
+                y0 = hor + fl * i // bands
+                y1 = hor + fl * (i + 1) // bands
+                t = i / (bands - 1)
+                col = tuple(int(horizon_col[j] + (gcol[j] - horizon_col[j]) * t) for j in range(3))
+                pygame.draw.rect(s, col, (0, y0, W, y1 - y0 + 1))
 
-        cw = FP_COLW
-        cols = W // cw
+        cw = self.fp_cw
+        cols = (W + cw - 1) // cw
         zbuf = [FP_MAXD] * cols
         rows = m.t
         px, py = p.x / TS, p.y / TS
         conts = m.containers
+        all_lows = []
+        walls = art.WALLS if art else None
+        lv = FP_LV
         for c in range(cols):
             camx = 2.0 * (c + 0.5) / cols - 1.0
             rdx, rdy = dirx + planex * camx, diry + planey * camx
@@ -4439,7 +4620,10 @@ class App:
                 t = rows[my][mx]
                 if t in FP_FULL:
                     wx = (py + d * rdy) if side == 0 else (px + d * rdx)
-                    hit = (d, t, side, wx - math.floor(wx))
+                    wx -= math.floor(wx)
+                    if (side == 0 and rdx > 0) or (side == 1 and rdy < 0):
+                        wx = 1.0 - wx
+                    hit = (d, t, side, wx)
                     break
                 if t in FP_LOW:
                     lows.append((d, t, mx, my))
@@ -4452,21 +4636,39 @@ class App:
                 lh = int(u * FP_WALLH)
                 y0 = int(hor + u * FP_EYE - lh)
                 sh = self.fp_shade(d, camx, dark, torch) * (0.78 if side else 1.0)
-                col = self.fp_c(FP_COL[t], sh)
-                if t == TREE:
-                    pygame.draw.rect(s, col, (x, y0, cw, int(lh * 0.66)))
-                    pygame.draw.rect(s, self.fp_c((92, 62, 38), sh), (x, y0 + int(lh * 0.66), cw, lh - int(lh * 0.66)))
+                if art:
+                    strip = art.strips(walls[t], art.level(sh))
+                    tw = len(strip)
+                    st = strip[min(tw - 1, int(wx * tw))]
+                    if lh <= H * 1.5:
+                        s.blit(pygame.transform.scale(st, (cw, max(1, lh))), (x, y0))
+                    else:                                         # muy cerca: solo se dibuja la parte visible
+                        th = st.get_height()
+                        r0 = max(0, int(-y0 / lh * th))
+                        r1 = min(th, int((H - y0) / lh * th) + 1)
+                        if r1 > r0:
+                            part = st.subsurface((0, r0, 1, r1 - r0))
+                            yy = y0 + r0 * lh // th
+                            s.blit(pygame.transform.scale(part, (cw, max(1, (r1 - r0) * lh // th + 1))), (x, yy))
                 else:
-                    if wx < 0.04 or wx > 0.96:
-                        col = self.fp_c(FP_COL[t], sh * 0.8)
-                    pygame.draw.rect(s, col, (x, y0, cw, lh))
-                    if t == WALL:
-                        pygame.draw.rect(s, self.fp_c((110, 78, 62), sh), (x, y0, cw, max(1, lh // 12)))
-                    elif t == WINDOW and 0.2 < wx < 0.8:
-                        pygame.draw.rect(s, self.fp_c((190, 225, 240), sh), (x, y0 + lh // 6, cw, lh * 2 // 3))
-                    elif t == DOOR_C and 0.42 < wx < 0.5:
-                        pygame.draw.rect(s, self.fp_c((220, 190, 90), sh), (x, y0 + lh // 2, cw, max(2, lh // 14)))
-            for d, t, lx, ly in reversed(lows):                  # muebles y agua: obstáculos bajos
+                    col = self.fp_c(FP_COL[t], sh)
+                    if t == TREE:
+                        pygame.draw.rect(s, col, (x, y0, cw, int(lh * 0.66)))
+                        pygame.draw.rect(s, self.fp_c((92, 62, 38), sh), (x, y0 + int(lh * 0.66), cw, lh - int(lh * 0.66)))
+                    else:
+                        if wx < 0.04 or wx > 0.96:
+                            col = self.fp_c(FP_COL[t], sh * 0.8)
+                        pygame.draw.rect(s, col, (x, y0, cw, lh))
+                        if t == WALL:
+                            pygame.draw.rect(s, self.fp_c((110, 78, 62), sh), (x, y0, cw, max(1, lh // 12)))
+                        elif t == WINDOW and 0.2 < wx < 0.8:
+                            pygame.draw.rect(s, self.fp_c((190, 225, 240), sh), (x, y0 + lh // 6, cw, lh * 2 // 3))
+                        elif t == DOOR_C and 0.42 < wx < 0.5:
+                            pygame.draw.rect(s, self.fp_c((220, 190, 90), sh), (x, y0 + lh // 2, cw, max(2, lh // 14)))
+            if lows:
+                all_lows.append((x, camx, lows))
+        for x, camx, lows in all_lows:                          # muebles y agua: obstáculos bajos (más cerca que la pared)
+            for d, t, lx, ly in reversed(lows):
                 d = max(d, 0.05)
                 u = H * 0.95 / d
                 hh = u * FP_LOW[t]
@@ -4478,6 +4680,8 @@ class App:
                     col = (50, 110, 190)
                 sh = self.fp_shade(d, camx, dark, torch)
                 pygame.draw.rect(s, self.fp_c(col, sh), (x, int(base - hh), cw, int(hh) + 1))
+                if t == CONT:
+                    pygame.draw.rect(s, self.fp_c((0, 0, 0), 1), (x, int(base - hh), cw, 1))
 
         # --- sprites: zombis, jugadores, autos, objetos, cuerpos ---
         sprites = []
@@ -4549,7 +4753,7 @@ class App:
                     pygame.draw.circle(s, self.fp_c((190, 220, 235), max(sh, 0.4)), (sx, int(gy - unit * 0.4)),
                                        max(2, int(unit * 0.05)))
             s.set_clip(None)
-        self.draw_fp_hands(hor)
+        self.draw_fp_hands(hor, dark)
 
     def fp_person(self, sx, gy, unit, sh, z, dark, remote_player=False):
         s = self.screen
@@ -4557,6 +4761,20 @@ class App:
         big = 1.3 if kind in ("brute", "breaker") else 1.0
         hgt = unit * 0.74 * big
         w = hgt * 0.36 * (1.25 if kind == "brute" else 1.0)
+        art = self.fp_art if (self.fp_art is not None and self.fp_art.ok) else None
+        if art is not None:
+            if remote_player:
+                base = "player"
+            elif kind in ("brute", "breaker"):
+                base = "zombie_" + kind
+            else:
+                base = "zombie_%d" % (getattr(z, "cloth_i", 0) % 6)
+            pose = "chase" if ((not remote_player) and z.state == "chase") else "idle"
+            img = art.sprite(base + "_" + pose, hgt * 1.07, art.level(max(sh, 0.12)))
+            if img is not None:
+                s.blit(img, (sx - img.get_width() // 2, int(gy - img.get_height() * 0.984)))
+                self.fp_person_tail(sx, gy, hgt, w, z, remote_player)
+                return
         if remote_player:
             cloth, skin = (70, 120, 200), (230, 195, 160)
         else:
@@ -4591,6 +4809,10 @@ class App:
             ec = (255, 40, 30) if not remote_player else (30, 30, 40)
             pygame.draw.circle(s, ec, (int(sx - hr * 0.4), hy), er)
             pygame.draw.circle(s, ec, (int(sx + hr * 0.4), hy), er)
+        self.fp_person_tail(sx, gy, hgt, w, z, remote_player)
+
+    def fp_person_tail(self, sx, gy, hgt, w, z, remote_player):
+        s = self.screen
         if remote_player:
             self.text(z.name, 20, (sx, int(gy - hgt * 1.12)), (200, 255, 200), center=True)
         elif z.hp < z.max_hp:
@@ -4618,7 +4840,7 @@ class App:
             for wx in (-0.36, 0.36):
                 pygame.draw.circle(s, lamp, (int(sx + w * wx), int(gy - h * 0.45)), max(2, int(h * 0.07)))
 
-    def draw_fp_hands(self, hor):
+    def draw_fp_hands(self, hor, dark=0.0):
         """Arma o manos delante de la cámara, mira y marco del auto."""
         s, g = self.screen, self.game
         p = g.p
@@ -4637,7 +4859,11 @@ class App:
         bob = math.sin(self.t * 9) * 6 if p.moving else 0.0
         sw = p.swing_t > 0
         w = p.weapon
-        if w in GUNS:
+        art = self.fp_art if (self.fp_art is not None and self.fp_art.ok) else None
+        himg = art.hand(w if w in WEAPON_LEN else "fists", art.level(1 - 0.6 * dark)) if art else None
+        if himg is not None:
+            self.fp_hand_img(himg, p, w, cx, bob, sw)
+        elif w in GUNS:
             gun = GUNS[w]
             aim = p.aiming
             ox = cx if aim else cx + 150
@@ -4674,9 +4900,31 @@ class App:
             elif w == "pan":
                 pygame.draw.circle(s, (45, 45, 50), (int(tx), int(ty)), 54)
             pygame.draw.circle(s, (230, 195, 160), (int(bx), int(by - 10)), 30)
-        col = (255, 70, 60) if p.aiming else (255, 255, 255)     # mira
-        pygame.draw.line(s, col, (cx - 9, hor), (cx + 9, hor), 2)
-        pygame.draw.line(s, col, (cx, hor - 9), (cx, hor + 9), 2)
+        col = (255, 70, 60) if p.aiming else (255, 255, 255)     # mira (siempre al centro de la pantalla)
+        cy = H // 2
+        pygame.draw.line(s, col, (cx - 9, cy), (cx + 9, cy), 2)
+        pygame.draw.line(s, col, (cx, cy - 9), (cx, cy + 9), 2)
+
+    def fp_hand_img(self, img, p, w, cx, bob, sw):
+        s = self.screen
+        iw, ih = img.get_size()
+        if w in GUNS:
+            ox = cx if p.aiming else cx + 150
+            y = H - 470 + bob * (0.2 if p.aiming else 1.0) + (18 if sw else 0) + (90 if p.reload_t > 0 else 0)
+            s.blit(img, (int(ox - iw / 2), int(y)))
+            if sw:                                            # fogonazo en la boca del arma
+                ln = {"pistol": 250, "smg": 300, "shotgun": 380, "rifle": 430}[w]
+                my = int(y + ih - ln - 56)
+                pygame.draw.circle(s, (255, 230, 120), (int(ox), my), 30)
+                pygame.draw.circle(s, (255, 255, 220), (int(ox), my), 15)
+        elif w == "fists" or w not in WEAPON_LEN:
+            punch = 70 if sw else 0
+            s.blit(img, (cx - iw // 2, int(H - 530 + bob - punch)))
+        else:
+            swing = (math.sin((0.14 - max(0.0, p.swing_t)) / 0.14 * math.pi) if sw else 0.0)
+            ccx, ccy = cx + 150 - swing * 260, H - 230 + bob + swing * 40
+            rot = img if swing <= 0.01 else pygame.transform.rotate(img, int(swing * 40))
+            s.blit(rot, (int(ccx - rot.get_width() / 2), int(ccy - rot.get_height() / 2)))
 
     def draw_car(self, c, ox, oy):
         s = self.screen
@@ -4983,6 +5231,7 @@ class App:
                     self.quit()
                 elif e.type == pygame.MOUSEMOTION:
                     self.mouse_dx += e.rel[0]
+                    self.mouse_dy += e.rel[1]
                 elif e.type == pygame.KEYDOWN:
                     self.on_keydown(e)
                 elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
