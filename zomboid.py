@@ -65,7 +65,14 @@ W, H = 1100, 700
 FPS = 60
 LQ = 4                       # la capa de luz se calcula a 1/4 de resolución (mucho más rápido)
 TS = 32                     # tamaño de tile en píxeles
-N = 110                     # el mapa mide N x N tiles
+MAP_K = 4                   # manzanas por lado (3 = 110 tiles, 4 = 143, 5 = 176, 6 = 209)
+N = 33 * MAP_K + 11         # el mapa mide N x N tiles (se recalcula con set_map_size)
+
+
+def set_map_size(k):
+    global MAP_K, N
+    MAP_K = int(k)
+    N = 33 * MAP_K + 11
 CH = 16                     # tiles por chunk (caché de render)
 
 GRASS, ROAD, FLOOR, WALL, TREE, DOOR_C, DOOR_O, CONT, WINDOW, WATER = range(10)
@@ -146,6 +153,19 @@ ITEMS = {
     "shells":     dict(name="Cartuchos", kind="ammo"),
     "rifle_ammo": dict(name="Balas de rifle", kind="ammo"),
 }
+ITEM_WEIGHT = {   # kg
+    "pistol": 1.2, "smg": 3.0, "shotgun": 3.5, "rifle": 4.0, "axe": 2.0, "bat": 1.5, "pan": 1.2, "knife": 0.4,
+    "rod": 1.0, "flashlight": 0.5, "bandage": 0.1, "medkit": 0.8, "canned": 0.5, "cookies": 0.2, "fish": 0.4,
+    "water": 0.6, "soda": 0.4, "battery": 0.2, "ammo": 0.03, "shells": 0.06, "rifle_ammo": 0.05, "fuel": 3.0,
+    "bottle": 0.2, "planks": 0.5,
+}
+CAP = 22.0                  # kg que puedes llevar
+
+
+def inv_weight(inv):
+    return sum(ITEM_WEIGHT.get(i, 0.5) * q for i, q in inv.items() if q > 0)
+
+
 ITEM_DESC = {
     "pistol": "Dispara con clic der. (apuntar) + clic izq. Hace mucho ruido.",
     "axe": "Arma y herramienta: derriba paredes y puertas rápido.",
@@ -172,7 +192,8 @@ ITEM_DESC = {
     "shells": "Cartuchos para la escopeta (se cargan con Recargar).",
     "rifle_ammo": "Balas para el rifle de caza (se cargan con Recargar).",
 }
-CONT_NAMES = {"fridge": "Nevera", "shelf": "Estante", "wardrobe": "Armario", "counter": "Mostrador",
+CONT_NAMES = {"gunrack": "Armero", "medcab": "Armario médico", "pantry": "Despensa",
+              "toolbox": "Caja de herramientas", "fridge": "Nevera", "shelf": "Estante", "wardrobe": "Armario", "counter": "Mostrador",
               "cabinet": "Gabinete", "chest": "Cofre"}
 ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
               "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
@@ -209,6 +230,7 @@ MODES = {   # dmg = daño de zombis, bite = prob. de mordida, bk = frecuencia de
     "hardcore": dict(name="Hardcore", zi=3, li=0, ti=1, dmg=1.6, bite=1.6, bk=2.5, revive=False,
                      desc="Hordas, poco botín y MUERTE REAL: no puedes revivir."),
 }
+MAP_OPTS = [("Pequeño", 3), ("Mediano", 4), ("Grande", 5), ("Enorme", 6)]
 Z_OPTS = [("Pocos", 0.4), ("Normal", 1.0), ("Muchos", 1.5), ("Horda", 2.2)]
 LOOT_OPTS = [("Escaso", 0.4), ("Poco", 0.7), ("Normal", 1.0), ("Abundante", 1.6), ("Muy abundante", 2.5)]
 TIME_OPTS = [("Lento", 0.5), ("Normal", 1.0), ("Rápido", 2.0), ("Muy rápido", 4.0)]
@@ -219,9 +241,10 @@ def norm_settings(d):
     d = d if isinstance(d, dict) else {}
     mode = d.get("mode") if d.get("mode") in MODES else "normal"
     out = dict(mode=mode)
-    for key, opts in (("zi", Z_OPTS), ("li", LOOT_OPTS), ("ti", TIME_OPTS)):
+    for key, opts in (("zi", Z_OPTS), ("li", LOOT_OPTS), ("ti", TIME_OPTS), ("ms", MAP_OPTS)):
         v = d.get(key)
-        out[key] = v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(opts) else MODES[mode][key]
+        out[key] = v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(opts) \
+            else MODES[mode].get(key, 1)
     return out
 
 LOOT = {   # (objeto, peso, cantidad mínima, máxima)
@@ -237,6 +260,26 @@ LOOT = {   # (objeto, peso, cantidad mínima, máxima)
                  ("rod", 0.5, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
                  ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6), ("fuel", 1.2, 1, 1)],
 }
+LOOT["gunrack"] = [("pistol", 3, 1, 1), ("smg", 1.0, 1, 1), ("shotgun", 1.8, 1, 1), ("rifle", 1.1, 1, 1),
+                   ("ammo", 3, 6, 14), ("shells", 3, 4, 8), ("rifle_ammo", 2, 4, 8), ("bandage", 1, 1, 2),
+                   ("flashlight", 1, 1, 1)]
+LOOT["medcab"] = [("medkit", 3, 1, 1), ("bandage", 5, 1, 3), ("water", 1, 1, 2), ("cookies", 1, 1, 1)]
+LOOT["pantry"] = [("canned", 5, 1, 3), ("cookies", 4, 1, 3), ("water", 4, 1, 2), ("soda", 4, 1, 3),
+                  ("bottle", 1, 1, 2)]
+LOOT["toolbox"] = [("axe", 1.6, 1, 1), ("bat", 1.6, 1, 1), ("planks", 4, 2, 5), ("fuel", 3, 1, 2),
+                   ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1)]
+SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, muebles que llevan
+    "gas": dict(name="GASOLINERA", w=(11, 13), h=(8, 9), q=1, maxd=0, doors=2, bonus=1, roof=(196, 62, 52),
+                cw=[("toolbox", 4), ("shelf", 2), ("fridge", 2)]),
+    "supermarket": dict(name="SUPERMERCADO", w=(20, 24), h=(14, 17), q=2, maxd=2, doors=3, bonus=4,
+                        roof=(58, 124, 92), cw=[("pantry", 5), ("fridge", 3), ("counter", 2)]),
+    "police": dict(name="COMISARÍA", w=(14, 16), h=(11, 13), q=3, maxd=2, doors=2, bonus=2, roof=(52, 72, 132),
+                   cw=[("gunrack", 4), ("cabinet", 2), ("counter", 2), ("wardrobe", 1)]),
+    "hardware": dict(name="FERRETERÍA", w=(14, 17), h=(10, 12), q=2, maxd=1, doors=2, bonus=3, roof=(184, 132, 52),
+                     cw=[("toolbox", 5), ("shelf", 3)]),
+    "hospital": dict(name="HOSPITAL", w=(20, 24), h=(14, 17), q=3, maxd=3, doors=3, bonus=4, roof=(222, 222, 230),
+                     cw=[("medcab", 5), ("fridge", 1), ("counter", 2), ("wardrobe", 1)]),
+}
 RARE_ITEMS = {"pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
               "shells", "rifle_ammo", "fuel"}
 ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad del edificio
@@ -246,7 +289,8 @@ ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad de
     [(0, 3), (1, 12), (2, 30), (3, 32), (4, 23)],
 ]
 CONT_WEIGHTS = [("fridge", 2), ("shelf", 3), ("wardrobe", 2), ("counter", 3), ("cabinet", 2)]
-CONT_COLORS = {"fridge": (222, 228, 238), "shelf": (160, 112, 62), "wardrobe": (96, 62, 42),
+CONT_COLORS = {"gunrack": (66, 78, 58), "medcab": (236, 242, 246), "pantry": (206, 154, 84),
+               "toolbox": (190, 62, 52), "fridge": (222, 228, 238), "shelf": (160, 112, 62), "wardrobe": (96, 62, 42),
                "counter": (172, 162, 142), "cabinet": (122, 128, 140), "chest": (150, 108, 52)}
 ROOF_COLORS = [(140, 70, 60), (112, 92, 72), (88, 100, 122), (122, 60, 72), (98, 112, 92)]
 ACTIONS = {"click", "shove", "interact", "reload", "flash", "cycle", "bandage", "consume", "use",
@@ -470,7 +514,9 @@ def vnoise(x, y, seed):
 # Mapa: generación procedural + render por chunks con caché
 # ----------------------------------------------------------------------------
 class GameMap:
-    def __init__(self, seed=None):
+    def __init__(self, seed=None, k=None):
+        self.k = k or MAP_K
+        set_map_size(self.k)
         self.seed = seed if seed is not None else random.randrange(10 ** 9)
         self.rnd = random.Random(self.seed)
         self.t = [[GRASS] * N for _ in range(N)]
@@ -487,7 +533,8 @@ class GameMap:
         return dict(
             t=base64.b64encode(zlib.compress(flat)).decode(),
             r=base64.b64encode(zlib.compress(roads)).decode(),
-            b=[[b["x0"], b["y0"], b["x1"], b["y1"], list(b["roof"]), b["q"]] for b in self.buildings],
+            b=[[b["x0"], b["y0"], b["x1"], b["y1"], list(b["roof"]), b["q"], b.get("kind")] for b in self.buildings],
+            k=self.k,
             c=[[x, y, c["kind"], int(c["looted"]), c.get("q", 0)] for (x, y), c in self.containers.items()],
             s=self.seed,
         )
@@ -495,13 +542,16 @@ class GameMap:
     @classmethod
     def from_dict(cls, d):
         m = cls.__new__(cls)
+        m.k = d.get("k", 3)
+        set_map_size(m.k)
         m.seed = d.get("s", 0)
         m.rnd = random.Random(0)
         flat = zlib.decompress(base64.b64decode(d["t"]))
         roads = zlib.decompress(base64.b64decode(d["r"]))
         m.t = [list(flat[y * N:(y + 1) * N]) for y in range(N)]
         m.road = [list(roads[y * N:(y + 1) * N]) for y in range(N)]
-        m.buildings = [dict(x0=b[0], y0=b[1], x1=b[2], y1=b[3], roof=tuple(b[4]), q=b[5]) for b in d["b"]]
+        m.buildings = [dict(x0=b[0], y0=b[1], x1=b[2], y1=b[3], roof=tuple(b[4]), q=b[5],
+                           kind=b[6] if len(b) > 6 else None) for b in d["b"]]
         m.containers = {(c[0], c[1]): dict(kind=c[2], looted=bool(c[3]), q=c[4]) for c in d["c"]}
         m.chunks = {}
         return m
@@ -553,7 +603,8 @@ class GameMap:
     def generate(self):
         rnd, t = self.rnd, self.t
         s_lake, s_forest = rnd.randint(1, 10 ** 6), rnd.randint(1, 10 ** 6)
-        for r in (5, 38, 71, 104):                       # carreteras (4 tiles de ancho)
+        K = self.k
+        for r in [5 + 33 * i for i in range(K + 1)]:     # carreteras (4 tiles de ancho)
             for y in range(r, r + 4):
                 for x in range(N):
                     t[y][x] = ROAD
@@ -563,20 +614,27 @@ class GameMap:
                     t[y][x] = ROAD
                     self.road[y][x] |= 2
 
-        for bx in (9, 42, 75):                           # 9 manzanas
-            for by in (9, 42, 75):
-                roll = rnd.random()
-                if roll < 0.18:                          # mansión / almacén: ocupa toda la manzana
-                    w, h = rnd.randint(20, 25), rnd.randint(20, 25)
-                    self.make_building(bx + rnd.randint(1, 29 - w - 1), by + rnd.randint(1, 29 - h - 1),
-                                       w, h, q=3, maxd=3, doors=rnd.randint(2, 3))
-                elif roll < 0.28:                        # parque / bosque: sin casas
-                    continue
-                else:
-                    for ox in (0, 15):
-                        for oy in (0, 15):
-                            if rnd.random() < 0.85:
-                                self.make_house(bx + ox, by + oy, 14, 14)
+        blocks = [(9 + 33 * i, 9 + 33 * j) for i in range(K) for j in range(K)]
+        rnd.shuffle(blocks)
+        guaranteed = list(SPECIAL)[:min(len(SPECIAL), max(1, len(blocks) // 3))]   # siempre hay de cada tipo
+        for bx, by in blocks:
+            if guaranteed:
+                self.make_special(bx, by, guaranteed.pop(0))
+                continue
+            roll = rnd.random()
+            if roll < 0.12:                              # edificio especial al azar
+                self.make_special(bx, by, rnd.choice(list(SPECIAL)))
+            elif roll < 0.28:                            # mansión / almacén: ocupa toda la manzana
+                w, h = rnd.randint(20, 25), rnd.randint(20, 25)
+                self.make_building(bx + rnd.randint(1, 29 - w - 1), by + rnd.randint(1, 29 - h - 1),
+                                   w, h, q=3, maxd=3, doors=rnd.randint(2, 3))
+            elif roll < 0.38:                            # parque / bosque: sin casas
+                continue
+            else:
+                for ox in (0, 15):
+                    for oy in (0, 15):
+                        if rnd.random() < 0.85:
+                            self.make_house(bx + ox, by + oy, 14, 14)
 
         near = [[False] * N for _ in range(N)]           # margen alrededor de los edificios
         for b in self.buildings:
@@ -603,6 +661,12 @@ class GameMap:
                 if self.road[yy][xx]:
                     return True
         return False
+
+    def make_special(self, bx, by, kind):
+        rnd, sp = self.rnd, SPECIAL[kind]
+        w, h = rnd.randint(*sp["w"]), rnd.randint(*sp["h"])
+        self.make_building(bx + rnd.randint(1, 29 - w - 1), by + rnd.randint(1, 29 - h - 1), w, h,
+                           q=sp["q"], maxd=sp["maxd"], doors=sp["doors"], skind=kind)
 
     def make_house(self, lx, ly, lw, lh):
         rnd = self.rnd
@@ -655,7 +719,7 @@ class GameMap:
                 return False
         return True
 
-    def make_building(self, x0, y0, w, h, q, maxd, doors):
+    def make_building(self, x0, y0, w, h, q, maxd, doors, skind=None):
         rnd, t = self.rnd, self.t
         x1, y1 = x0 + w - 1, y0 + h - 1
         for y in range(y0, y1 + 1):
@@ -711,6 +775,9 @@ class GameMap:
         weights = CONT_WEIGHTS if q < 2 else [(k, wgt + (2 if k in ("cabinet", "shelf", "wardrobe") else 0))
                                               for k, wgt in CONT_WEIGHTS]
         placed_c, want = 0, rnd.randint(*count)
+        if skind:
+            weights = SPECIAL[skind]["cw"]
+            want += SPECIAL[skind]["bonus"]
         for x, y in cand:
             if placed_c >= want:
                 break
@@ -721,7 +788,8 @@ class GameMap:
                                            rolled=False, inv={})
             placed_c += 1
 
-        self.buildings.append(dict(x0=x0, y0=y0, x1=x1, y1=y1, roof=rnd.choice(ROOF_COLORS), q=q))
+        self.buildings.append(dict(x0=x0, y0=y0, x1=x1, y1=y1, kind=skind,
+                                   roof=SPECIAL[skind]["roof"] if skind else rnd.choice(ROOF_COLORS), q=q))
 
     # --- dibujo (cacheado por chunk) -------------------------------------------------
     def get_chunk(self, cx, cy):
@@ -957,7 +1025,7 @@ class Game:
         self.set_settings(settings)
         self.seed = seed if seed is not None else random.randrange(10 ** 9)
         self.rnd = random.Random(self.seed + 1)
-        self.map = GameMap(self.seed)
+        self.map = GameMap(self.seed, self.k)
         self.players = {}
         self.next_pid = 0
         self.p = None
@@ -997,9 +1065,13 @@ class Game:
         st = self.settings
         mo = MODES[st["mode"]]
         self.zmul, self.lmul, self.tmul = Z_OPTS[st["zi"]][1], LOOT_OPTS[st["li"]][1], TIME_OPTS[st["ti"]][1]
+        self.k = MAP_OPTS[st["ms"]][1]
+        if not hasattr(self, "map"):
+            set_map_size(self.k)
         self.dmgm, self.bitem, self.bkm, self.revive = mo["dmg"], mo["bite"], mo["bk"], mo["revive"]
-        self.zday = min(130, max(6, int(ZOMBIE_DAY * self.zmul)))
-        self.znight = min(340, max(10, int(ZOMBIE_NIGHT * self.zmul)))
+        area = (self.k * self.k / 9.0) ** 0.7              # mapa más grande = más zombis (sin llegar a proporcional)
+        self.zday = min(190, max(6, int(ZOMBIE_DAY * self.zmul * area)))
+        self.znight = min(420, max(10, int(ZOMBIE_NIGHT * self.zmul * area)))
 
     # --- jugadores -------------------------------------------------------------------
     def spawn_pos(self):
@@ -1128,7 +1200,8 @@ class Game:
         rnd, m = self.rnd, self.map
         sx, sy = (SPAWN_TILE[0] + 0.5) * TS, (SPAWN_TILE[1] + 0.5) * TS
         tries = 0
-        while len(self.cars) < N_CARS and tries < 4000:
+        want = min(26, max(4, round(N_CARS * self.k * self.k / 9)))
+        while len(self.cars) < want and tries < 6000:
             tries += 1
             tx, ty = rnd.randint(4, N - 5), rnd.randint(4, N - 5)
             if m.tile(tx, ty) != ROAD:
@@ -1396,6 +1469,7 @@ class Game:
         speed = SNEAK if p.sneak else (RUN if p.running else WALK)
         if p.aiming:
             speed *= 0.6
+        speed *= self.load_factor(p)
         if p.moving:
             self.move_entity(p, dx * speed * dt, dy * speed * dt, PLAYER_R)
 
@@ -1448,7 +1522,7 @@ class Game:
                 p.open = None
 
         if p.running:
-            p.stamina -= 14 * dt
+            p.stamina -= 14 * dt / max(0.5, self.load_factor(p))
             if p.stamina <= 0:
                 p.stamina, p.exhausted = 0.0, True
                 self.msg("¡Estás agotado!", (255, 190, 90), p)
@@ -2179,6 +2253,16 @@ class Game:
                     z.wander_t = 0
 
     # --- inventario e interacción ---------------------------------------------------------------------------------
+    def load_factor(self, p):
+        """Factor de velocidad por el peso: sin penalización hasta la mitad de la capacidad."""
+        r = inv_weight(p.inv) / CAP
+        return 1.0 if r <= 0.5 else 1.0 - 0.35 * min(1.4, (r - 0.5) / 0.5)
+
+    def room_for(self, p, item, qty):
+        """Cuántas unidades de ese objeto aún te caben."""
+        wt = ITEM_WEIGHT.get(item, 0.5)
+        return max(0, min(qty, int((CAP - inv_weight(p.inv)) / wt + 1e-9)))
+
     def give(self, p, item, qty=1):
         p.inv[item] = p.inv.get(item, 0) + qty
         if item in WEAPONS and item not in p.cond:
@@ -2419,9 +2503,18 @@ class Game:
     def pickup(self, p, it):
         if it[4] not in self.items:
             return
-        del self.items[it[4]]
-        self.give(p, it[2], it[3])
-        self.msg(f"Recoges {ITEMS[it[2]]['name']}" + (f" x{it[3]}" if it[3] > 1 else ""), (170, 255, 190), p)
+        orig = it[3]
+        n = self.room_for(p, it[2], orig)
+        if n <= 0:
+            self.msg("Llevas demasiado peso. Suelta algo para recoger esto.", (255, 190, 90), p)
+            return
+        if n < orig:
+            it[3] -= n
+        else:
+            del self.items[it[4]]
+        self.give(p, it[2], n)
+        self.msg(f"Recoges {ITEMS[it[2]]['name']}" + (f" x{n}" if n > 1 else "") +
+                 (" (no te cabe todo)" if n < orig else ""), (170, 255, 190), p)
 
     def _item_arg(self, arg):
         try:
@@ -2492,6 +2585,10 @@ class Game:
         item, qty = a
         have = c["inv"].get(item, 0)
         n = have if qty == 0 else min(qty, have)
+        fit = self.room_for(p, item, n)
+        if fit < n:
+            self.msg("No puedes cargar tanto peso." if fit <= 0 else "Solo te cabe una parte.", (255, 190, 90), p)
+        n = fit
         if n <= 0:
             return
         if have - n > 0:
@@ -3488,7 +3585,7 @@ class App:
         gs = self.gs
         cx = W // 2
         self.text("AJUSTES DE PARTIDA", 60, (cx, 50), (255, 220, 120), center=True)
-        self.ui_panel(cx - 380, 100, 760, 500)
+        self.ui_panel(cx - 380, 100, 760, 520)
         self.text("MODO DE JUEGO", 26, (cx - 350, 116), (200, 205, 220))
         for i, (k, mo) in enumerate(MODES.items()):
             col = [(50, 120, 70), (190, 120, 40), (150, 40, 40)][i] if gs["mode"] == k else (58, 64, 86)
@@ -3497,10 +3594,11 @@ class App:
                 self.cfg["game"] = gs
                 save_cfg(self.cfg)
         self.text(MODES[gs["mode"]]["desc"], 22, (cx, 220), (230, 210, 160), center=True)
-        rows = (("Cantidad de zombis", "zi", Z_OPTS), ("Botín en los muebles", "li", LOOT_OPTS),
+        rows = (("Tamaño del mapa (más grande = más edificios, tarda más en crearse)", "ms", MAP_OPTS),
+                ("Cantidad de zombis", "zi", Z_OPTS), ("Botín en los muebles", "li", LOOT_OPTS),
                 ("Paso del tiempo (1 día dura ~30 min en Normal)", "ti", TIME_OPTS))
         for r, (label, key, opts) in enumerate(rows):
-            y = 254 + r * 86
+            y = 244 + r * 76
             self.text(label, 26, (cx - 350, y), (225, 225, 235))
             n = len(opts)
             w = (700 - 8 * (n - 1)) // n
@@ -3511,8 +3609,8 @@ class App:
                     self.cfg["game"] = gs
                     save_cfg(self.cfg)
         self.text("Cambiar el modo restablece las opciones de abajo; luego puedes ajustarlas a tu gusto.", 20,
-                  (cx, 520), (150, 155, 175), center=True)
-        self.text("Al jugar online, estos ajustes los decide el anfitrión.", 20, (cx, 546), (150, 155, 175), center=True)
+                  (cx, 566), (150, 155, 175), center=True)
+        self.text("Al jugar online, estos ajustes los decide el anfitrión.", 20, (cx, 592), (150, 155, 175), center=True)
         if self.ui_btn(cx - 150, 626, 300, 54, "Listo", pygame.K_ESCAPE, size=34, color=(50, 120, 70)):
             self.state = self.gset_back
             self.focus = None
@@ -3912,7 +4010,7 @@ class App:
             self.inv_panel = 0
         self.text("INVENTARIO", 44, (W // 2, 30), (255, 220, 120), center=True)
         for pan, (x, title, rows) in enumerate((
-                (30, f"TUS OBJETOS ({len(left)})", left),
+                (30, f"TUS OBJETOS ({len(left)})   Peso {inv_weight(p.inv):.1f}/{CAP:.0f} kg", left),
                 (570, f"{CONT_NAMES.get(cv[0], 'MUEBLE').upper()} ({len(right)})" if cv else "MUEBLE", right))):
             self.ui_panel(x, 56, 500, 510)
             self.text(title, 26, (x + 14, 66), (255, 255, 255) if self.inv_panel == pan else (170, 175, 195))
@@ -4142,6 +4240,9 @@ class App:
             if b["q"] >= 2:                                   # marca de edificio grande (mejor botín)
                 pygame.draw.circle(s, (255, 215, 90) if b["q"] == 3 else (210, 210, 220),
                                    (int(rx + rw / 2), int(ry + rh / 2)), 7 if b["q"] == 3 else 5)
+            if b.get("kind") in SPECIAL:                      # rótulo del edificio especial
+                self.text(SPECIAL[b["kind"]]["name"], 26, (rx + rw / 2, ry + rh / 2 - 26),
+                          (30, 30, 36) if b["kind"] == "hospital" else (255, 255, 255), center=True)
 
         for f in g.fx:                                        # efectos: cristales, gritos, escombros
             x, y, kind, ttl = f[0] - ox, f[1] - oy, f[2], f[3]
@@ -4348,7 +4449,10 @@ class App:
             if car.fuel <= 0:
                 self.text("SIN GASOLINA", 40, (W // 2, 90), (255, 120, 90), center=True)
         self.text("Arma: " + wtxt, 24, (14, 40), (230, 230, 240))
-        self.text(f"Tablones: {p.inv.get('planks', 0)}", 22, (14, 62), (215, 190, 140))
+        wr = inv_weight(p.inv) / CAP
+        self.text(f"Tablones: {p.inv.get('planks', 0)}   Peso: {inv_weight(p.inv):.1f}/{CAP:.0f} kg" +
+                  ("  (cargado: vas más lento)" if wr > 0.5 else ""), 22, (14, 62),
+                  (255, 170, 120) if wr > 0.85 else (215, 190, 140))
         if p.flash_on:
             self.text(f"Linterna {int(p.battery)}%", 22, (14, 82), (255, 240, 160))
 
