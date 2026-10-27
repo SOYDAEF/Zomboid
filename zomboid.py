@@ -134,6 +134,11 @@ ITEMS = {
     "planks":     dict(name="Tablones", kind="material"),
     "rod":        dict(name="Caña de pescar", kind="weapon"),
     "fish":       dict(name="Pescado", kind="food", amount=35),
+    "smg":        dict(name="Subfusil", kind="weapon"),
+    "shotgun":    dict(name="Escopeta", kind="weapon"),
+    "rifle":      dict(name="Rifle de caza", kind="weapon"),
+    "shells":     dict(name="Cartuchos", kind="ammo"),
+    "rifle_ammo": dict(name="Balas de rifle", kind="ammo"),
 }
 ITEM_DESC = {
     "pistol": "Dispara con clic der. (apuntar) + clic izq. Hace mucho ruido.",
@@ -154,11 +159,17 @@ ITEM_DESC = {
     "ammo": "Balas para la pistola (se cargan con Recargar).",
     "bottle": "Botella vacía: lánzala para distraer zombis.",
     "planks": "Material para construir y fabricar un cofre.",
+    "smg": "Subfusil automático: mantén clic der. (apuntar) y clic izq. Gasta balas 9mm rápido. Muy ruidoso.",
+    "shotgun": "Escopeta: dispara varios perdigones, devastadora de cerca. Usa cartuchos.",
+    "rifle": "Rifle de caza: mucho alcance y atraviesa hasta 3 zombis. Usa balas de rifle.",
+    "shells": "Cartuchos para la escopeta (se cargan con Recargar).",
+    "rifle_ammo": "Balas para el rifle de caza (se cargan con Recargar).",
 }
 CONT_NAMES = {"fridge": "Nevera", "shelf": "Estante", "wardrobe": "Armario", "counter": "Mostrador",
               "cabinet": "Gabinete", "chest": "Cofre"}
-ITEM_ORDER = ["pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage", "medkit",
-              "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "bottle", "planks"]
+ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
+              "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
+              "bottle", "planks"]
 
 WEAPONS = {
     "fists": dict(name="Puños", dmg=8, rng=34, arc=2.0, cd=0.45, noise=45, targets=1, dur=None, kb=140, stam=5),
@@ -168,12 +179,47 @@ WEAPONS = {
     "axe":   dict(name="Hacha", dmg=58, rng=52, arc=2.2, cd=0.85, noise=120, targets=2, dur=90, kb=240, stam=12),
     "rod":   dict(name="Caña de pescar", dmg=3, rng=60, arc=0.9, cd=0.6, noise=40, targets=1, dur=80, kb=50, stam=3),
 }
-PISTOL = dict(dmg=50, cd=0.40, noise=650, mag=12, reload=1.5)
-WEAPON_LEN = {"fists": 0, "knife": 16, "pan": 18, "bat": 26, "axe": 24, "pistol": 18, "rod": 30}
+GUNS = {   # armas de fuego: dmg por perdigón, cd = tiempo entre disparos, pierce = zombis que atraviesa
+    "pistol":  dict(name="Pistola", ammo="ammo", dmg=50, cd=0.40, noise=650, mag=12, reload=1.5, pellets=1,
+                    spread=0.025, rng=520, pierce=1, auto=False, kb=200),
+    "smg":     dict(name="Subfusil", ammo="ammo", dmg=22, cd=0.10, noise=700, mag=30, reload=2.0, pellets=1,
+                    spread=0.07, rng=480, pierce=1, auto=True, kb=110),
+    "shotgun": dict(name="Escopeta", ammo="shells", dmg=17, cd=0.95, noise=800, mag=6, reload=2.4, pellets=7,
+                    spread=0.20, rng=300, pierce=1, auto=False, kb=330),
+    "rifle":   dict(name="Rifle de caza", ammo="rifle_ammo", dmg=110, cd=1.0, noise=900, mag=5, reload=2.2,
+                    pellets=1, spread=0.008, rng=760, pierce=3, auto=False, kb=260),
+}
+PISTOL = GUNS["pistol"]
+WEAPON_LEN = {"fists": 0, "knife": 16, "pan": 18, "bat": 26, "axe": 24, "pistol": 18, "rod": 30,
+              "smg": 22, "shotgun": 30, "rifle": 36}
+
+# --- modos y ajustes de partida -----------------------------------------------------------------------
+MODES = {   # dmg = daño de zombis, bite = prob. de mordida, bk = frecuencia de rompemuros, revive = se puede reaparecer
+    "normal":   dict(name="Normal", zi=1, li=2, ti=1, dmg=1.0, bite=1.0, bk=1.0, revive=True,
+                     desc="La experiencia de siempre. Si mueres, reapareces (tu botín queda en tu cuerpo)."),
+    "hard":     dict(name="Difícil", zi=2, li=1, ti=1, dmg=1.3, bite=1.3, bk=1.8, revive=True,
+                     desc="Más zombis, menos botín, golpes más fuertes y más rompemuros."),
+    "hardcore": dict(name="Hardcore", zi=3, li=0, ti=1, dmg=1.6, bite=1.6, bk=2.5, revive=False,
+                     desc="Hordas, poco botín y MUERTE REAL: no puedes revivir."),
+}
+Z_OPTS = [("Pocos", 0.4), ("Normal", 1.0), ("Muchos", 1.5), ("Horda", 2.2)]
+LOOT_OPTS = [("Escaso", 0.4), ("Poco", 0.7), ("Normal", 1.0), ("Abundante", 1.6), ("Muy abundante", 2.5)]
+TIME_OPTS = [("Lento", 0.5), ("Normal", 1.0), ("Rápido", 2.0), ("Muy rápido", 4.0)]
+
+
+def norm_settings(d):
+    """Valida los ajustes de partida (vienen de un archivo o de la red)."""
+    d = d if isinstance(d, dict) else {}
+    mode = d.get("mode") if d.get("mode") in MODES else "normal"
+    out = dict(mode=mode)
+    for key, opts in (("zi", Z_OPTS), ("li", LOOT_OPTS), ("ti", TIME_OPTS)):
+        v = d.get(key)
+        out[key] = v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(opts) else MODES[mode][key]
+    return out
 
 LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "fridge":   [("canned", 3, 1, 2), ("cookies", 2, 1, 2), ("water", 3, 1, 1), ("soda", 3, 1, 2), ("bottle", 1, 1, 1)],
-    "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8),
+    "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4),
                  ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2)],
     "wardrobe": [("bandage", 3, 1, 2), ("bat", 1, 1, 1), ("flashlight", 1, 1, 1), ("medkit", 1, 1, 1),
                  ("water", 1, 1, 1), ("planks", 1, 1, 2)],
@@ -181,9 +227,11 @@ LOOT = {   # (objeto, peso, cantidad mínima, máxima)
                  ("cookies", 2, 1, 2), ("bottle", 2, 1, 2)],
     "cabinet":  [("medkit", 1, 1, 1), ("bandage", 2, 1, 2), ("ammo", 2, 4, 9), ("battery", 2, 1, 1),
                  ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3),
-                 ("rod", 0.5, 1, 1)],
+                 ("rod", 0.5, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
+                 ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6)],
 }
-RARE_ITEMS = {"pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight"}
+RARE_ITEMS = {"pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
+              "shells", "rifle_ammo"}
 ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad del edificio
     [(0, 22), (1, 40), (2, 28), (3, 10)],
     [(0, 12), (1, 30), (2, 38), (3, 20)],
@@ -200,12 +248,14 @@ ACTIONS = {"click", "shove", "interact", "reload", "flash", "cycle", "bandage", 
 # ----------------------------------------------------------------------------
 # Zombis: tipos y habilidades
 # ----------------------------------------------------------------------------
-KINDS = ["walker", "runner", "thrower", "brute"]
+KINDS = ["walker", "runner", "thrower", "brute", "breaker"]
+BREAKABLE = {WALL, WINDOW, DOOR_C}                   # lo que un Rompemuros puede derribar andando
 ZK = {
     "walker":  dict(name="Normal", hp=(45, 70), spd=(38, 52), r=10, dmg=1.0),
     "runner":  dict(name="Corredor", hp=(28, 42), spd=(105, 125), r=9, dmg=0.8),
     "thrower": dict(name="Lanzador", hp=(40, 60), spd=(40, 50), r=10, dmg=0.8),
     "brute":   dict(name="Bruto", hp=(200, 260), spd=(34, 42), r=14, dmg=1.7),
+    "breaker": dict(name="Rompemuros", hp=(300, 380), spd=(36, 42), r=14, dmg=1.5),
 }
 
 # ----------------------------------------------------------------------------
@@ -239,7 +289,7 @@ def default_name():
 
 def load_cfg():
     cfg = dict(name=default_name(), port=PORT, dark=1.0, fps=False, fullscreen=False,
-               minimap=True, hat="none", keys=default_binds())
+               minimap=True, hat="none", keys=default_binds(), game=norm_settings(None))
     try:
         with open(CFG_PATH, encoding="utf-8") as f:
             data = json.load(f)
@@ -251,6 +301,8 @@ def load_cfg():
             cfg["dark"] = max(0.5, min(1.0, float(data["dark"])))
         if data.get("hat") in HATS:
             cfg["hat"] = data["hat"]
+        if isinstance(data.get("game"), dict):
+            cfg["game"] = norm_settings(data["game"])
         for k in ("fps", "fullscreen", "minimap"):
             if isinstance(data.get(k), bool):
                 cfg[k] = data[k]
@@ -761,6 +813,7 @@ class Player:
         self.cond = {}
         self.weapon = "fists"
         self.mag = 0
+        self.mags = {}                  # balas cargadas en cada arma de fuego que no tienes en la mano
         self.flash_on = False
         self.battery = 100.0
         self.sneak = False
@@ -864,7 +917,8 @@ class ZView:
 # Lógica del juego (no dibuja nada). Sirve para solo, anfitrión y servidor dedicado.
 # ----------------------------------------------------------------------------
 class Game:
-    def __init__(self, seed=None, local=True, name="Tú", hat="none"):
+    def __init__(self, seed=None, local=True, name="Tú", hat="none", settings=None):
+        self.set_settings(settings)
         self.seed = seed if seed is not None else random.randrange(10 ** 9)
         self.rnd = random.Random(self.seed + 1)
         self.map = GameMap(self.seed)
@@ -899,6 +953,15 @@ class Game:
             self.msg("Sobrevive. Tienes una caña de pescar: equípala y pesca en un lago para comer.",
                      (255, 255, 255), self.p)
 
+    def set_settings(self, settings):
+        self.settings = norm_settings(settings)
+        st = self.settings
+        mo = MODES[st["mode"]]
+        self.zmul, self.lmul, self.tmul = Z_OPTS[st["zi"]][1], LOOT_OPTS[st["li"]][1], TIME_OPTS[st["ti"]][1]
+        self.dmgm, self.bitem, self.bkm, self.revive = mo["dmg"], mo["bite"], mo["bk"], mo["revive"]
+        self.zday = min(130, max(6, int(ZOMBIE_DAY * self.zmul)))
+        self.znight = min(340, max(10, int(ZOMBIE_NIGHT * self.zmul)))
+
     # --- jugadores -------------------------------------------------------------------
     def spawn_pos(self):
         for _ in range(40):
@@ -917,6 +980,9 @@ class Game:
         return pl
 
     def respawn_player(self, p):
+        if not p.alive and not self.revive:
+            self.msg("Hardcore: no puedes revivir.", (255, 140, 120), p)
+            return
         if not p.alive:
             p.reset(*self.spawn_pos())
             self.msg(f"{p.name} ha vuelto a la partida.", (200, 255, 200))
@@ -992,7 +1058,8 @@ class Game:
 
     # --- población ---------------------------------------------------------------------------
     def pick_kind(self, dark):
-        table = [("walker", 70), ("runner", 6 + 24 * dark), ("thrower", 5 + 13 * dark), ("brute", 2 + 8 * dark)]
+        table = [("walker", 70), ("runner", 6 + 24 * dark), ("thrower", 5 + 13 * dark), ("brute", 2 + 8 * dark),
+                 ("breaker", (1.0 + 5 * dark) * self.bkm)]
         return weighted(self.rnd, table)[0]
 
     def new_zombie(self, x, y, kind=None):
@@ -1006,7 +1073,7 @@ class Game:
         rnd, m = self.rnd, self.map
         sx, sy = (SPAWN_TILE[0] + 0.5) * TS, (SPAWN_TILE[1] + 0.5) * TS
         tries = 0
-        while len(self.zombies) < ZOMBIE_DAY + 15 and tries < 6000:
+        while len(self.zombies) < self.zday + 15 and tries < 6000:
             tries += 1
             tx, ty = rnd.randint(4, N - 5), rnd.randint(4, N - 5)
             want = (FLOOR,) if rnd.random() < 0.45 else (GRASS, ROAD)
@@ -1027,7 +1094,7 @@ class Game:
         if not alive:
             return
         dark = self.darkness()
-        target = ZOMBIE_DAY + int((ZOMBIE_NIGHT - ZOMBIE_DAY) * dark)
+        target = self.zday + int((self.znight - self.zday) * dark)
         n = len(self.zombies)
         if n > target:
             cand = [z for z in self.zombies if z.state != "chase" and z.d > 420]
@@ -1099,7 +1166,7 @@ class Game:
         self.tick_effects(dt)
         alive_any = any(pl.alive for pl in self.players.values())
         if alive_any:
-            self.minutes += dt * GAME_MIN_PER_SEC
+            self.minutes += dt * GAME_MIN_PER_SEC * self.tmul
             if self.day() != self.last_day:
                 self.last_day = self.day()
                 self.restock()
@@ -1122,7 +1189,7 @@ class Game:
             n = math.hypot(dx, dy)
             dx, dy = dx / n, dy / n
         p.sneak = bool(inp.get("sneak"))
-        p.aiming = bool(inp["aim"]) and p.weapon == "pistol"
+        p.aiming = bool(inp["aim"]) and p.weapon in GUNS
         p.running = (bool(inp["run"]) and p.moving and not p.sneak and not p.exhausted
                      and p.stamina > 0 and not p.aiming)
         speed = SNEAK if p.sneak else (RUN if p.running else WALK)
@@ -1137,7 +1204,7 @@ class Game:
             p.angle = i["a"]
             p.moving = bool(i["mv"])
             p.sneak = bool(i["sn"])
-            p.aiming = bool(i["aim"]) and p.weapon == "pistol"
+            p.aiming = bool(i["aim"]) and p.weapon in GUNS
             p.running = (bool(i["run"]) and p.moving and not p.sneak and not p.exhausted
                          and p.stamina > 0 and not p.aiming)
             nx, ny = i["x"], i["y"]
@@ -1188,8 +1255,11 @@ class Game:
         p.hurt_t -= dt
         p.throw_cd -= dt
         p.drink_cd -= dt
-        if hold and p.weapon != "pistol" and p.atk_cd <= 0 and not (p.work and p.work[0] == "build"):
+        if hold and p.weapon not in GUNS and p.atk_cd <= 0 and not (p.work and p.work[0] == "build"):
             self.melee_attack(p)
+        elif hold and p.weapon in GUNS and GUNS[p.weapon]["auto"] and p.aiming and p.atk_cd <= 0 \
+                and p.reload_t <= 0:
+            self.shoot(p)                                # armas automáticas: mantener el gatillo
 
         if p.work and p.work[0] == "build":              # construir / destruir
             self.update_build(p, dt)
@@ -1200,11 +1270,12 @@ class Game:
 
         if p.reload_t > 0:
             p.reload_t -= dt
-            if p.reload_t <= 0:
-                take = min(PISTOL["mag"] - p.mag, p.inv.get("ammo", 0))
+            if p.reload_t <= 0 and p.weapon in GUNS:
+                gun = GUNS[p.weapon]
+                take = min(gun["mag"] - p.mag, p.inv.get(gun["ammo"], 0))
                 p.mag += take
-                self.remove_item(p, "ammo", take)
-                self.msg(f"Recargada ({p.mag}/{PISTOL['mag']}).", (200, 220, 255), p)
+                self.remove_item(p, gun["ammo"], take)
+                self.msg(f"Recargada ({p.mag}/{gun['mag']}).", (200, 220, 255), p)
 
         if p.search:
             p.search[2] += dt
@@ -1248,6 +1319,26 @@ class Game:
             p.hp, p.alive, p.search, p.work = 0.0, False, None, None
             p.fish = p.open = None
             self.msg(f"{p.name} ha muerto ({p.cause or 'causa desconocida'}).", (255, 120, 120))
+            self.drop_body(p)
+            if not self.revive:
+                self.msg(f"HARDCORE: {p.name} no puede revivir.", (255, 90, 90))
+
+    def drop_body(self, p):
+        """Al morir, todo lo que llevabas queda en el suelo junto a tu cuerpo (cualquiera puede recogerlo)."""
+        if p.weapon in GUNS:
+            p.mags[p.weapon] = p.mag
+        pile = dict(p.inv)
+        for w, n in p.mags.items():                       # las balas que tenían cargadas las armas
+            if n > 0 and w in GUNS:
+                pile[GUNS[w]["ammo"]] = pile.get(GUNS[w]["ammo"], 0) + n
+        for item, qty in pile.items():
+            if qty > 0 and item in ITEMS:
+                a, d = self.rnd.uniform(0, math.tau), self.rnd.uniform(4, 20)
+                self.spawn_item(p.x + math.cos(a) * d, p.y + math.sin(a) * d, item, qty)
+        p.inv, p.mags, p.mag, p.weapon, p.flash_on = {}, {}, 0, "fists", False
+        self.add_corpse(p.x, p.y, p.angle, (70, 120, 200))
+        if pile:
+            self.msg("Tus cosas quedaron junto a tu cuerpo.", (255, 200, 140), p)
 
     def hurt_player(self, P, dmg, cause):
         P.hp -= dmg
@@ -1314,7 +1405,7 @@ class Game:
         if p.demo_noise <= 0:
             p.demo_noise = 0.7
             self.make_noise(p.x, p.y, 70 + power * 1.8)
-        if p.weapon not in ("fists", "pistol"):
+        if p.weapon not in ("fists",) + tuple(GUNS):
             p.tool_wear += dt
             if p.tool_wear >= 2.0:
                 p.tool_wear = 0.0
@@ -1425,13 +1516,23 @@ class Game:
     def hit_zombie(self, z, dmg, ang, kb, p, stagger=0.45):
         z.hp -= dmg
         z.kx, z.ky = math.cos(ang) * kb, math.sin(ang) * kb
-        z.stagger = stagger * (0.4 if z.kind == "brute" else 1.0)
+        z.stagger = stagger * (0.4 if z.kind in ("brute", "breaker") else 1.0)
         z.state, z.to_player, z.lost_t = "chase", True, 7.0
         z.tx, z.ty = p.x, p.y
         if z.hp <= 0 and z.alive:
             z.alive = False
             p.kills += 1
             self.add_corpse(z.x, z.y, ang, z.cloth)
+
+    def set_weapon(self, p, w):
+        """Cambia de arma guardando las balas cargadas de la de fuego que sueltas."""
+        if w == p.weapon:
+            return
+        if p.weapon in GUNS:
+            p.mags[p.weapon] = p.mag
+        p.weapon = w
+        p.mag = p.mags.get(w, 0) if w in GUNS else 0
+        p.reload_t = 0.0
 
     def wear_weapon(self, p, n=1):
         if p.weapon not in WEAPONS or p.weapon == "fists":
@@ -1446,7 +1547,7 @@ class Game:
                 p.cond[broken] = w["dur"]
                 p.weapon = broken
             else:
-                p.weapon = "fists"
+                self.set_weapon(p, "fists")
 
     def melee_attack(self, p):
         if p.atk_cd > 0:
@@ -1491,54 +1592,65 @@ class Game:
                 continue
             if math.hypot(z.x - p.x, z.y - p.y) <= 46 + z.r - 10 and \
                     abs(angdiff(math.atan2(z.y - p.y, z.x - p.x), p.angle)) <= 1.2:
-                f = 0.35 if z.kind == "brute" else 1.0
+                f = 0.35 if z.kind in ("brute", "breaker") else 1.0
                 z.kx, z.ky = math.cos(p.angle) * 420 * f, math.sin(p.angle) * 420 * f
                 z.stagger = 1.1 * f
                 z.state, z.to_player = "chase", True
                 z.tx, z.ty = p.x, p.y
 
     def shoot(self, p):
-        if p.atk_cd > 0 or p.reload_t > 0:
+        gun = GUNS.get(p.weapon)
+        if not gun or p.atk_cd > 0 or p.reload_t > 0:
             return
         if p.mag <= 0:
             self.msg("Sin munición. Pulsa R para recargar.", (255, 190, 90), p)
             p.atk_cd = 0.3
             return
         p.mag -= 1
-        p.atk_cd = PISTOL["cd"]
+        p.atk_cd = gun["cd"]
         p.search = None
-        ang = p.angle + self.rnd.gauss(0, 0.025 + (0.04 if p.moving else 0.0))
-        c, s = math.cos(ang), math.sin(ang)
-        end = self.map.ray_distance(p.x, p.y, ang, 520)
-        best = None
-        for z in self.zombies:
-            if not z.alive:
-                continue
-            rx, ry = z.x - p.x, z.y - p.y
-            t = rx * c + ry * s
-            if 0 < t < end and abs(-rx * s + ry * c) < z.r + 2 and (best is None or t < best[0]):
-                best = (t, z)
-        if best:
-            end = best[0]
-            self.hit_zombie(best[1], PISTOL["dmg"], ang, 200, p, 0.6)
-        self.add_tracer(p.x + c * 14, p.y + s * 14, p.x + c * end, p.y + s * end, (255, 235, 150), 2)
-        self.make_noise(p.x, p.y, PISTOL["noise"])
+        sp = gun["spread"] + ((0.04 if p.moving else 0.0) if gun["pellets"] == 1 else 0.02 if p.moving else 0.0)
+        hits = {}                                        # zombi -> [daño acumulado, ángulo]
+        for _ in range(gun["pellets"]):
+            ang = p.angle + self.rnd.gauss(0, sp)
+            c, s = math.cos(ang), math.sin(ang)
+            end = self.map.ray_distance(p.x, p.y, ang, gun["rng"])
+            cand = []
+            for z in self.zombies:
+                if not z.alive:
+                    continue
+                rx, ry = z.x - p.x, z.y - p.y
+                t = rx * c + ry * s
+                if 0 < t < end and abs(-rx * s + ry * c) < z.r + 2:
+                    cand.append((t, z))
+            cand.sort(key=lambda a: a[0])
+            taken = cand[:gun["pierce"]]
+            for k, (t, z) in enumerate(taken):
+                h = hits.setdefault(z, [0.0, ang])
+                h[0] += gun["dmg"] * (0.8 ** k)
+            if taken:
+                end = taken[-1][0]
+            self.add_tracer(p.x + c * 14, p.y + s * 14, p.x + c * end, p.y + s * end, (255, 235, 150), 2)
+        for z, (dmg, ang) in hits.items():
+            self.hit_zombie(z, dmg, ang, gun["kb"], p, 0.6)
+        self.make_noise(p.x, p.y, gun["noise"])
         p.swing_t = 0.06
         if p is self.p:
-            self.shake = max(self.shake, 0.08)
+            self.shake = max(self.shake, 0.08 + 0.05 * (gun["pellets"] > 1))
 
     def reload(self, p):
-        if p.weapon != "pistol" or p.reload_t > 0 or p.mag >= PISTOL["mag"]:
+        gun = GUNS.get(p.weapon)
+        if not gun or p.reload_t > 0 or p.mag >= gun["mag"]:
             return
-        if p.inv.get("ammo", 0) <= 0:
-            self.msg("No tienes balas.", (255, 190, 90), p)
+        if p.inv.get(gun["ammo"], 0) <= 0:
+            self.msg(f"No tienes {ITEMS[gun['ammo']]['name'].lower()}.", (255, 190, 90), p)
             return
-        p.reload_t = PISTOL["reload"]
+        p.reload_t = gun["reload"]
         p.search = None
         self.msg("Recargando...", (200, 220, 255), p)
 
     def on_click(self, p):
-        if p.weapon == "pistol":
+        if p.weapon in GUNS:
             if p.aiming:
                 self.shoot(p)
             else:
@@ -1730,16 +1842,16 @@ class Game:
         z.atk_cd = 1.3 + self.rnd.random() * 0.4
         if self.rnd.random() > 0.78:
             return
-        self.hurt_player(P, self.rnd.uniform(6, 12) * z.dmg_mult, "Zombi")
+        self.hurt_player(P, self.rnd.uniform(6, 12) * z.dmg_mult * self.dmgm, "Zombi")
         r = self.rnd.random()
-        if r < BITE_CHANCE:
+        if r < BITE_CHANCE * self.bitem:
             if FATAL_BITES and not P.infected:
                 P.infected, P.inf_t = True, INFECTION_TIME
                 self.msg("¡Te mordió! Estás infectado.", (255, 80, 80), P)
             else:
                 self.msg("¡Te mordió!", (255, 80, 80), P)
             P.bleeding, P.bleed_t = True, 45.0
-        elif r < BITE_CHANCE + 0.30:
+        elif r < BITE_CHANCE * self.bitem + 0.30:
             if not P.bleeding:
                 self.msg("Estás sangrando. Usa una venda.", (255, 120, 120), P)
             P.bleeding, P.bleed_t = True, 45.0
@@ -1797,7 +1909,7 @@ class Game:
                     self.zombie_throw(z, P)
                 return
             ang = math.atan2(z.ty - z.y, z.tx - z.x)
-            if z.to_player and not z.sees:
+            if z.to_player and not z.sees and z.kind != "breaker":   # el Rompemuros va en línea recta
                 step = self.flow_dir(z, P)
                 if step:
                     ang = math.atan2(step[1] - z.y, step[0] - z.x)
@@ -1816,9 +1928,12 @@ class Game:
                 z.lunge_t, z.lunge_cd = 0.45, 4.0
             c, s = math.cos(ang), math.sin(ang)
             ax, ay = int((z.x + c * (z.r + 6)) // TS), int((z.y + s * (z.r + 6)) // TS)
-            if m.tile(ax, ay) == DOOR_C:                 # los zombis NO abren puertas: las destruyen
-                power = 40.0 if z.kind == "brute" else 14.0
-                self.damage_tile(ax, ay, power * dt, None)
+            ahead = m.tile(ax, ay)
+            if ahead == DOOR_C or (z.kind == "breaker" and ahead in BREAKABLE):
+                # los zombis NO abren puertas: las destruyen; el Rompemuros también derriba paredes y ventanas
+                power = 60.0 if z.kind == "breaker" else (40.0 if z.kind == "brute" else 14.0)
+                if self.damage_tile(ax, ay, power * dt, None) == 0.0 and z.kind == "breaker":
+                    self.add_fx(z.x, z.y, "scream")
                 z.bash_noise -= dt
                 if z.bash_noise <= 0:
                     z.bash_noise = 0.8
@@ -1858,7 +1973,7 @@ class Game:
         if p.inv[item] <= 0:
             p.inv.pop(item, None)
             if p.weapon == item:
-                p.weapon = "fists"
+                self.set_weapon(p, "fists")
             if item == "flashlight":
                 p.flash_on = False
 
@@ -1867,7 +1982,7 @@ class Game:
             return
         kind = ITEMS[item]["kind"]
         if kind == "weapon":
-            p.weapon = item
+            self.set_weapon(p, item)
             self.msg(f"Equipado: {ITEMS[item]['name']}", (200, 220, 255), p)
         elif item == "flashlight":
             self.toggle_flash(p)
@@ -1901,8 +2016,9 @@ class Game:
             p.battery = 100.0
             self.remove_item(p, item)
             self.msg("Cambiaste las pilas.", (200, 220, 255), p)
-        elif item == "ammo":
-            self.msg("Las balas se cargan con la tecla de recargar (pistola equipada).", (200, 200, 200), p)
+        elif kind == "ammo":
+            self.msg("La munición se carga con la tecla de recargar (con el arma de fuego equipada).",
+                     (200, 200, 200), p)
         elif item == "bottle":
             self.msg("Lánzala con su tecla (V) para atraer zombis.", (200, 200, 200), p)
         elif item == "planks":
@@ -1928,8 +2044,9 @@ class Game:
         self.msg("No tienes comida ni bebida.", (255, 190, 90), p)
 
     def cycle_weapon(self, p):
-        opts = ["fists"] + [i for i in ("rod", "knife", "pan", "bat", "axe", "pistol") if p.inv.get(i, 0) > 0]
-        p.weapon = opts[(opts.index(p.weapon) + 1) % len(opts)] if p.weapon in opts else "fists"
+        opts = ["fists"] + [i for i in ("rod", "knife", "pan", "bat", "axe", "pistol", "smg", "shotgun", "rifle")
+                            if p.inv.get(i, 0) > 0]
+        self.set_weapon(p, opts[(opts.index(p.weapon) + 1) % len(opts)] if p.weapon in opts else "fists")
 
     def toggle_flash(self, p):
         if p.inv.get("flashlight", 0) <= 0:
@@ -2100,7 +2217,8 @@ class Game:
     def roll_loot(self, c):
         rnd = self.rnd
         q = c.get("q", 0)
-        n = weighted(rnd, ITEM_COUNT_BY_QUALITY[q])[0]
+        n = weighted(rnd, ITEM_COUNT_BY_QUALITY[q])[0] * self.lmul
+        n = int(n) + (1 if rnd.random() < n - int(n) else 0)
         table = [(i, wt * (1 + 1.2 * q if i in RARE_ITEMS else 1), lo, hi) for i, wt, lo, hi in LOOT[c["kind"]]]
         for _ in range(n):
             item, _, lo, hi = weighted(rnd, table)
@@ -2318,7 +2436,7 @@ class Server:
         c.pid = p.pid
         self.clients[p.pid] = c
         c.send({"t": "welcome", "pid": p.pid, "pos": [p.x, p.y], "name": p.name,
-                "m": g.minutes, "map": g.map.to_dict()})
+                "m": g.minutes, "map": g.map.to_dict(), "gs": g.settings})
         c.pump()
         g.msg(f"{p.name} se unió a la partida.", (170, 255, 190))
 
@@ -2636,6 +2754,7 @@ class ClientGame(Game):
         self.tracers = []
         self.projs = []
         self.fx = []
+        self.set_settings(welcome.get("gs"))
         self.minutes = float(welcome["m"])
         self.shake = 0.0
         self.items = {}
@@ -2647,7 +2766,7 @@ class ClientGame(Game):
 
     def update(self, dt, inp):
         self.tick_effects(dt)
-        self.minutes += dt * GAME_MIN_PER_SEC
+        self.minutes += dt * GAME_MIN_PER_SEC * self.tmul
         p = self.p
         if p.alive:
             self.control_move(p, dt, inp)
@@ -2733,8 +2852,8 @@ class ClientGame(Game):
             self.fx.append([x, y, kind, 0.6])
 
 
-def run_dedicated(port, seed=None):
-    g = Game(seed=seed, local=False)
+def run_dedicated(port, seed=None, settings=None):
+    g = Game(seed=seed, local=False, settings=settings)
     srv = Server(g, port)
     print(f"Servidor Zomboid Py en el puerto TCP {port}  (semilla {g.seed}, Ctrl+C para salir)")
     last, report = time.time(), 0.0
@@ -2773,6 +2892,8 @@ class App:
         pygame.init()
         pygame.display.set_caption("Zomboid Py")
         self.cfg = load_cfg()
+        self.gs = self.cfg["game"]
+        self.gset_back = "solo"
         self.bind = self.cfg["keys"]
         self.fonts = {}
         self.screen = None
@@ -2884,7 +3005,7 @@ class App:
 
     def start_solo(self, seed_text=""):
         self.stop_net()
-        self.begin(Game(seed=parse_seed(seed_text), name=self.name, hat=self.cfg["hat"]), "solo")
+        self.begin(Game(seed=parse_seed(seed_text), name=self.name, hat=self.cfg["hat"], settings=self.gs), "solo")
 
     def start_host(self, port=None, seed_text=""):
         self.stop_net()
@@ -2894,7 +3015,7 @@ class App:
             self.net_msg = "El puerto debe ser un número (1024-65535)."
             self.state = "online"
             return
-        game = Game(seed=parse_seed(seed_text), name=self.name, hat=self.cfg["hat"])
+        game = Game(seed=parse_seed(seed_text), name=self.name, hat=self.cfg["hat"], settings=self.gs)
         try:
             self.server = Server(game, port)
             self.server.label = f"Partida de {self.name}"
@@ -3089,21 +3210,64 @@ class App:
         self.text("Cada partida crea un mundo nuevo - Atajos: 1 Solo, 2 Online, 3 Ajustes, 4 Salir", 24,
                   (W // 2, H - 30), (150, 155, 175), center=True)
 
+    def settings_btn(self, x, y, w, h):
+        """Botón que abre la pantalla de ajustes de partida (modo, zombis, botín, tiempo)."""
+        if self.ui_btn(x, y, w, h, f"Modo {MODES[self.gs['mode']]['name']} - Ajustes de partida", None, size=26,
+                       color=(90, 75, 40)):
+            self.gset_back = self.state
+            self.state = "gset"
+            self.focus = None
+
+    def draw_gset(self):
+        self.draw_menu_bg()
+        gs = self.gs
+        cx = W // 2
+        self.text("AJUSTES DE PARTIDA", 60, (cx, 50), (255, 220, 120), center=True)
+        self.ui_panel(cx - 380, 100, 760, 500)
+        self.text("MODO DE JUEGO", 26, (cx - 350, 116), (200, 205, 220))
+        for i, (k, mo) in enumerate(MODES.items()):
+            col = [(50, 120, 70), (190, 120, 40), (150, 40, 40)][i] if gs["mode"] == k else (58, 64, 86)
+            if self.ui_btn(cx - 350 + i * 240, 146, 230, 52, mo["name"], None, size=32, color=col):
+                self.gs = gs = norm_settings(dict(mode=k))
+                self.cfg["game"] = gs
+                save_cfg(self.cfg)
+        self.text(MODES[gs["mode"]]["desc"], 22, (cx, 220), (230, 210, 160), center=True)
+        rows = (("Cantidad de zombis", "zi", Z_OPTS), ("Botín en los muebles", "li", LOOT_OPTS),
+                ("Paso del tiempo (1 día dura ~30 min en Normal)", "ti", TIME_OPTS))
+        for r, (label, key, opts) in enumerate(rows):
+            y = 254 + r * 86
+            self.text(label, 26, (cx - 350, y), (225, 225, 235))
+            n = len(opts)
+            w = (700 - 8 * (n - 1)) // n
+            for j, (nm, _) in enumerate(opts):
+                col = (60, 110, 170) if gs[key] == j else (58, 64, 86)
+                if self.ui_btn(cx - 350 + j * (w + 8), y + 32, w, 42, nm, None, size=22, color=col):
+                    gs[key] = j
+                    self.cfg["game"] = gs
+                    save_cfg(self.cfg)
+        self.text("Cambiar el modo restablece las opciones de abajo; luego puedes ajustarlas a tu gusto.", 20,
+                  (cx, 520), (150, 155, 175), center=True)
+        self.text("Al jugar online, estos ajustes los decide el anfitrión.", 20, (cx, 546), (150, 155, 175), center=True)
+        if self.ui_btn(cx - 150, 626, 300, 54, "Listo", pygame.K_ESCAPE, size=34, color=(50, 120, 70)):
+            self.state = self.gset_back
+            self.focus = None
+
     def draw_solo(self):
         self.draw_menu_bg()
         self.ui_panel(W // 2 - 300, 130, 600, 380)
         self.text("JUGAR SOLO", 56, (W // 2, 180), (255, 220, 120), center=True)
         self.text("Se genera un mundo nuevo con lagos, bosques y casas.", 26, (W // 2, 232), (200, 205, 220), center=True)
         self.ui_field("sseed", W // 2 - 250, 270, 500, "Semilla del mundo (vacío = aleatoria)")
-        if self.ui_btn(W // 2 - 250, 370, 500, 62, "Crear mundo y jugar", pygame.K_RETURN, color=(50, 120, 70)):
+        self.settings_btn(W // 2 - 250, 338, 500, 44)
+        if self.ui_btn(W // 2 - 250, 392, 500, 60, "Crear mundo y jugar", pygame.K_RETURN, color=(50, 120, 70)):
             self.start_solo(self.fields["sseed"])
-        if self.ui_btn(W // 2 - 250, 445, 500, 50, "Volver", pygame.K_ESCAPE, size=30):
+        if self.ui_btn(W // 2 - 250, 460, 500, 44, "Volver", pygame.K_ESCAPE, size=28):
             self.state = "title"
             self.focus = None
 
     def start_host_web(self):
         self.stop_net()
-        game = Game(seed=parse_seed(self.fields["seed"]), name=self.name, hat=self.cfg["hat"])
+        game = Game(seed=parse_seed(self.fields["seed"]), name=self.name, hat=self.cfg["hat"], settings=self.gs)
         try:
             self.server = WebServer(game)
         except Exception as ex:
@@ -3157,7 +3321,8 @@ class App:
         self.ui_field("seed", 60, 250, 460, "Semilla (opcional)")
         self.text("Recibirás un código de 6 caracteres para tus amigos.", 22, (60, 345), (170, 175, 195))
         self.text("Deja esta pestaña abierta y visible mientras juegan.", 22, (60, 370), (255, 200, 120))
-        if self.ui_btn(60, 410, 460, 64, "Crear sala y jugar", None, color=(50, 120, 70)):
+        self.settings_btn(60, 398, 460, 36)
+        if self.ui_btn(60, 440, 460, 44, "Crear sala y jugar", None, size=30, color=(50, 120, 70)):
             self.start_host_web()
         self.ui_panel(560, 190, 500, 300)
         self.text("UNIRSE A UNA SALA", 34, (580, 205), (170, 200, 255))
@@ -3181,8 +3346,9 @@ class App:
         self.ui_field("port", 60, 250, 200, "Puerto")
         self.ui_field("seed", 280, 250, 240, "Semilla (opcional)")
         self.text(f"Tu IP local: {self.my_ip}", 26, (60, 345), (170, 230, 255))
-        self.text("En la misma red (LAN) tus amigos te verán solos en su lista.", 22, (60, 372), (170, 175, 195))
-        if self.ui_btn(60, 420, 460, 64, "Crear partida y jugar", None, color=(50, 120, 70)):
+        self.text("En la misma red (LAN) tus amigos te verán solos en su lista.", 22, (60, 370), (170, 175, 195))
+        self.settings_btn(60, 398, 460, 42)
+        if self.ui_btn(60, 450, 460, 58, "Crear partida y jugar", None, color=(50, 120, 70)):
             self.start_host(self.fields["port"], self.fields["seed"])
         self.ui_panel(560, 190, 500, 330)
         self.text("UNIRSE A UNA PARTIDA", 34, (580, 205), (170, 200, 255))
@@ -3307,7 +3473,7 @@ class App:
             if key in (pygame.K_r, pygame.K_RETURN, b["reload"]):
                 if self.mode == "solo":
                     self.start_solo("")
-                else:
+                elif self.game.revive:
                     self.act("respawn")
             return
         if key == b["sneak"] or key == pygame.K_LCTRL:
@@ -3753,16 +3919,23 @@ class App:
             body = tuple(min(255, c + 50) for c in z.cloth)
         elif kind == "brute":
             body = (95, 55, 55)
+        elif kind == "breaker":
+            body = (70, 70, 88)
         c, sn = math.cos(z.angle), math.sin(z.angle)
         pygame.draw.circle(sc, (18, 22, 18), (x, y), r + 2)
         pygame.draw.circle(sc, body, (x, y), r)
+        if kind == "breaker":                                   # hombreras de metal: se nota que derriba muros
+            pygame.draw.circle(sc, (200, 140, 50), (x, y), r, 2)
+            for sd in (-1.2, 1.2):
+                pygame.draw.circle(sc, (150, 150, 165), (int(x + math.cos(z.angle + sd) * (r - 2)),
+                                                         int(y + math.sin(z.angle + sd) * (r - 2))), 5)
         if kind == "thrower":
             pygame.draw.circle(sc, (110, 80, 50), (int(x - c * 6), int(y - sn * 6)), 5)
-        reach = (16 if kind == "brute" else 14) if z.state == "chase" else 11
+        reach = (16 if kind in ("brute", "breaker") else 14) if z.state == "chase" else 11
         ca, sa = math.cos(z.angle + 0.55), math.sin(z.angle + 0.55)
         cb, sb = math.cos(z.angle - 0.55), math.sin(z.angle - 0.55)
         pygame.draw.line(sc, z.skin, (int(x + ca * reach), int(y + sa * reach)), (int(x + cb * reach), int(y + sb * reach)), 5)
-        pygame.draw.circle(sc, z.skin, (int(x + c * 3), int(y + sn * 3)), 7 if kind == "brute" else 6)
+        pygame.draw.circle(sc, z.skin, (int(x + c * 3), int(y + sn * 3)), 7 if kind in ("brute", "breaker") else 6)
         if z.hp < z.max_hp:
             frac = max(0.0, z.hp / z.max_hp)
             pygame.draw.rect(sc, (110, 20, 20), (x - 10, y - r - 8, 20, 3))
@@ -3859,11 +4032,13 @@ class App:
         self.bar(14, H - 28, "Aguante", p.stamina, (220, 210, 70))
 
         w = WEAPONS.get(p.weapon)
-        if p.weapon == "pistol":
-            wtxt = f"Pistola  {p.mag}/{PISTOL['mag']}  (+{p.inv.get('ammo', 0)})"
+        if p.weapon in GUNS:
+            gun = GUNS[p.weapon]
+            wtxt = f"{gun['name']}  {p.mag}/{gun['mag']}  (+{p.inv.get(gun['ammo'], 0)})"
         else:
             wtxt = w["name"] + (f"  {p.cond.get(p.weapon, w['dur'])}/{w['dur']}" if w["dur"] else "")
-        self.text(f"Día {g.day()}   {g.clock()}", 34, (14, 10), (255, 235, 150))
+        mtag = "" if g.settings["mode"] == "normal" else f"   [{MODES[g.settings['mode']]['name'].upper()}]"
+        self.text(f"Día {g.day()}   {g.clock()}{mtag}", 34, (14, 10), (255, 235, 150))
         self.text("Arma: " + wtxt, 24, (14, 40), (230, 230, 240))
         self.text(f"Tablones: {p.inv.get('planks', 0)}", 22, (14, 62), (215, 190, 140))
         if p.flash_on:
@@ -3962,9 +4137,15 @@ class App:
             self.text(f"Causa: {p.cause or 'Desconocida'}", 36, (W // 2, 300), center=True)
             self.text(f"El mundo lleva {days} días y {hours} horas", 40, (W // 2, 350), (255, 235, 150), center=True)
             self.text(f"Zombis eliminados: {p.kills}", 34, (W // 2, 395), center=True)
-            again = "crear un mundo nuevo" if self.mode == "solo" else "reaparecer"
-            self.text(f"Pulsa ENTER o R para {again}  -  Esc para el menú", 30, (W // 2, 470),
-                      (230, 230, 240), center=True)
+            if self.mode != "solo" and not g.revive:
+                self.text("HARDCORE: no puedes revivir  -  Esc para el menú", 32, (W // 2, 470),
+                          (255, 150, 130), center=True)
+            else:
+                again = "crear un mundo nuevo" if self.mode == "solo" else "reaparecer"
+                self.text(f"Pulsa ENTER o R para {again}  -  Esc para el menú", 30, (W // 2, 470),
+                          (230, 230, 240), center=True)
+            self.text("Tus cosas quedaron junto a tu cuerpo." if self.mode != "solo" and g.revive
+                      else "", 24, (W // 2, 510), (255, 200, 140), center=True)
 
     # --- bucle principal -----------------------------------------------------------------------------------------------
     def quit(self):
@@ -4057,6 +4238,8 @@ class App:
             self.draw_online()
         elif st == "connecting":
             self.draw_connecting()
+        elif st == "gset":
+            self.draw_gset()
         elif st == "settings":
             self.draw_settings()
         elif st == "play":
@@ -4119,7 +4302,8 @@ def _main():
     args = sys.argv[1:]
     if args and args[0] == "server":
         port = int(args[1]) if len(args) > 1 else PORT
-        run_dedicated(port, parse_seed(args[2]) if len(args) > 2 else None)
+        run_dedicated(port, parse_seed(args[2]) if len(args) > 2 else None,
+                      dict(mode=args[3]) if len(args) > 3 else load_cfg()["game"])
     elif args and args[0] == "host":
         port = int(args[1]) if len(args) > 1 else PORT
         App(("host", port, args[2] if len(args) > 2 else "")).run()
