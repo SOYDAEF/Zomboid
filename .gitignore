@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+build/
+zomboid_config.json
+zomboid_error.txt
