@@ -4,7 +4,7 @@ Juego de supervivencia zombi en vista cenital (inspirado en Project Zomboid), he
 
 ## Jugar en el navegador (un jugador)
 Cuando GitHub Pages esté activo, el juego está en:
-`https://soydaef.github.io/zomboid/`
+`https://soydaef.github.io/Zomboid/`
 (la primera vez carga unos segundos; haz clic en la página para empezar).
 
 ## Jugar en PC (con modo online y LAN)
@@ -25,4 +25,4 @@ En el navegador no existe el modo online (los navegadores no permiten conexiones
 
 ## Prueba de conexión entre navegadores (WebRTC)
 `rtc-test/` contiene una prueba de conexión directa entre navegadores con código de sala
-(`znet.js`). Una vez publicada la página: `https://soydaef.github.io/zomboid/rtc-test/`
+(`znet.js`). Una vez publicada la página: `https://soydaef.github.io/Zomboid/rtc-test/`
