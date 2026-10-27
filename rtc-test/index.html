@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prueba WebRTC - Zomboid Py</title>
+<style>
+  body { font-family: system-ui, sans-serif; background: #14161c; color: #e8e8ee; margin: 0; padding: 16px; max-width: 720px; margin-inline: auto; }
+  h1 { font-size: 1.3rem; }
+  button, input { font-size: 1rem; padding: 10px 14px; border-radius: 8px; border: 1px solid #444; background: #262a36; color: #fff; }
+  button { cursor: pointer; } button:hover { background: #343a4c; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; align-items: center; }
+  #code { font-size: 2rem; letter-spacing: .2em; font-weight: bold; color: #ffd75e; }
+  #status { color: #9fd; } #log { background: #0c0d11; padding: 10px; border-radius: 8px; height: 260px; overflow: auto; font-family: monospace; font-size: .85rem; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Prueba de conexión entre navegadores (WebRTC)</h1>
+<p>Abre esta página en dos navegadores. En uno pulsa <b>Crear sala</b> y en el otro escribe el código y pulsa <b>Unirse</b>.</p>
+<div class="row"><button id="host">Crear sala</button><span id="code"></span></div>
+<div class="row"><input id="join" placeholder="CÓDIGO" maxlength="6" size="8" autocapitalize="characters"><button id="btnjoin">Unirse</button></div>
+<div class="row">Estado: <b id="status">sin conexión</b> &nbsp;|&nbsp; Conectados: <b id="peers">0</b></div>
+<div class="row"><input id="msg" placeholder="Mensaje" size="24"><button id="send">Enviar</button><button id="ping">Ping</button><button id="big">Enviar 500 KB</button></div>
+<div id="log"></div>
+<script src="znet.js"></script>
+<script>
+  var $ = function (id) { return document.getElementById(id); };
+  var q = new URLSearchParams(location.search);
+  if (q.get("signal")) ZNet.config({ signal: q.get("signal"), base: q.get("base") || "" });
+  function out(t) { var l = $("log"); l.textContent += t + "\n"; l.scrollTop = l.scrollHeight; }
+  $("host").onclick = function () { $("code").textContent = ZNet.host(); out("Sala creada. Comparte el código."); };
+  $("btnjoin").onclick = function () { ZNet.join($("join").value); out("Uniéndose..."); };
+  $("send").onclick = function () { var t = $("msg").value; ZNet.send(JSON.stringify({ k: "chat", t: t })); out("yo: " + t); $("msg").value = ""; };
+  $("ping").onclick = function () { ZNet.send(JSON.stringify({ k: "ping", t0: performance.now() })); };
+  $("big").onclick = function () { var s = new Array(500001).join("x"); ZNet.send(JSON.stringify({ k: "big", n: s.length, s: s })); out("enviado mensaje de " + s.length + " caracteres"); };
+  setInterval(function () {
+    $("status").textContent = ZNet.status(); $("peers").textContent = ZNet.peers();
+    var raw;
+    while ((raw = ZNet.pop()) !== "") {
+      var m = JSON.parse(raw);
+      if (m.sys) { out("[" + m.sys + "] " + m.from); continue; }
+      var d; try { d = JSON.parse(m.data); } catch (e) { out(m.from + ": " + m.data); continue; }
+      if (d.k === "chat") out(m.from + ": " + d.t);
+      else if (d.k === "ping") ZNet.send(JSON.stringify({ k: "pong", t0: d.t0 }), m.from);
+      else if (d.k === "pong") out("ping: " + Math.round(performance.now() - d.t0) + " ms");
+      else if (d.k === "big") out("recibido mensaje grande: " + d.s.length + " caracteres " + (d.s.length === d.n ? "(completo)" : "(CORRUPTO)"));
+    }
+  }, 50);
+</script>
+</body>
+</html>

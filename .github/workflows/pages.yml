@@ -26,6 +26,8 @@ jobs:
         run: python -m pip install pygbag
       - name: Construir la versión web
         run: python -m pygbag --build "$GITHUB_WORKSPACE"
+      - name: Añadir la página de prueba de WebRTC
+        run: cp -r rtc-test build/web/rtc-test
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
