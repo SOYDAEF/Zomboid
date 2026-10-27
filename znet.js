@@ -48,7 +48,7 @@
     var text = JSON.stringify(obj), id = rid(6), n = Math.ceil(text.length / SIG_CHUNK), jobs = [];
     for (var i = 0; i < n; i++)
       jobs.push(sigSendRaw(room, to, JSON.stringify({ k: id, i: i, n: n, d: text.substr(i * SIG_CHUNK, SIG_CHUNK) })));
-    return Promise.all(jobs).catch(function (e) { setErr("señalización: " + e); });
+    return Promise.all(jobs).catch(function (e) { setErr("senalizacion: " + e); });
   }
   function sigListen(room, id, handler) {
     var parts = {}, stopped = false, es = null;
@@ -106,7 +106,7 @@
       S.inbox.push(JSON.stringify({ sys: "leave", from: id }));
       if (S.conns[id] === c) delete S.conns[id];
       try { c.pc.close(); } catch (e) {}
-      if (S.role === "client" && S.status === "connected") S.status = "error:se perdió la conexión con el anfitrión";
+      if (S.role === "client" && S.status === "connected") S.status = "error:se perdio la conexion con el anfitrion";
     }
     dc.onopen = function () {
       log("canal abierto con " + id);
@@ -188,16 +188,16 @@
     join: function (code) {
       ZNet.close();
       code = String(code || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
-      if (code.length !== 6) { S = fresh(); setErr("el código tiene 6 caracteres"); return; }
+      if (code.length !== 6) { S = fresh(); setErr("el codigo tiene 6 caracteres"); return; }
       S = fresh(); S.role = "client"; S.code = code; S.id = rid(8); S.status = "joining";
       S.stopSig = sigListen(code, S.id, function (m) {
         if (m.t === "offer") clientOnOffer(m);
-        else if (m.t === "full") setErr("la sala está llena");
+        else if (m.t === "full") setErr("la sala esta llena");
       });
       var tries = 0;
       function hello() {
         if (S.status !== "joining") return;
-        if (++tries > 6) return setErr("no se encontró la sala (¿código correcto? ¿el anfitrión sigue abierto?)");
+        if (++tries > 6) return setErr("no se encontro la sala (codigo correcto? el anfitrion sigue con la sala abierta?)");
         log("buscando sala " + code + " (intento " + tries + ")");
         sigSend(code, "host", { t: "hello", from: S.id });
         S.retry = setTimeout(hello, 6000);
