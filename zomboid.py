@@ -116,13 +116,6 @@ CAR_MAX, CAR_REV, CAR_ACC, CAR_TURN = 330.0, -110.0, 230.0, 2.3
 N_CARS = 7 if IS_WEB else 10
 CAR_COLORS = [(190, 50, 45), (50, 100, 180), (210, 190, 60), (230, 230, 235), (60, 150, 90), (60, 60, 68)]
 
-FP_PLANE = 0.85              # plano de cámara (campo de visión ~80 grados)
-FP_EYE, FP_WALLH = 0.62, 1.15    # altura de los ojos y de las paredes (en tiles)
-FP_MAXD = 24.0               # alcance de la vista en primera persona (tiles)
-FP_COLW = 6 if IS_WEB else 4  # ancho de cada columna del raycasting (más grande = más rápido)
-FP_FULL = {WALL, TREE, DOOR_C, WINDOW}
-FP_LOW = {CONT: 0.5, WATER: 0.12}
-FP_COL = {WALL: (154, 112, 90), TREE: (46, 104, 54), DOOR_C: (126, 82, 46), WINDOW: (132, 172, 192)}
 
 PORT = 5555
 SNAP_HZ = 20
@@ -142,6 +135,7 @@ ITEMS = {
     "pan":        dict(name="Sartén", kind="weapon"),
     "knife":      dict(name="Cuchillo", kind="weapon"),
     "flashlight": dict(name="Linterna", kind="tool"),
+    "backpack":   dict(name="Mochila", kind="tool"),
     "bandage":    dict(name="Venda", kind="med"),
     "medkit":     dict(name="Botiquín", kind="med"),
     "canned":     dict(name="Comida enlatada", kind="food", amount=40),
@@ -165,9 +159,14 @@ ITEM_WEIGHT = {   # kg
     "pistol": 1.2, "smg": 3.0, "shotgun": 3.5, "rifle": 4.0, "axe": 2.0, "bat": 1.5, "pan": 1.2, "knife": 0.4,
     "rod": 1.0, "flashlight": 0.5, "bandage": 0.1, "medkit": 0.8, "canned": 0.5, "cookies": 0.2, "fish": 0.4,
     "water": 0.6, "soda": 0.4, "battery": 0.2, "ammo": 0.03, "shells": 0.06, "rifle_ammo": 0.05, "fuel": 3.0,
-    "bottle": 0.2, "planks": 0.5,
+    "bottle": 0.2, "planks": 0.5, "backpack": 1.0,
 }
 CAP = 22.0                  # kg que puedes llevar
+BACKPACK_CAP = 14.0         # kg extra al llevar una mochila
+
+
+def cap_of(inv):
+    return CAP + (BACKPACK_CAP if inv.get("backpack", 0) > 0 else 0.0)
 
 
 def inv_weight(inv):
@@ -183,6 +182,7 @@ ITEM_DESC = {
     "rod": "Equípala y pulsa Interactuar frente a un lago para pescar.",
     "fish": "Pescado: quita hambre.",
     "flashlight": "Ilumina un cono delante de ti. Gasta pilas.",
+    "backpack": "Mientras la lleves, puedes cargar 14 kg más.",
     "bandage": "Detiene el sangrado.",
     "medkit": "Cura 45 de salud y detiene el sangrado.",
     "canned": "Comida enlatada: quita mucha hambre.",
@@ -205,7 +205,7 @@ CONT_NAMES = {"gunrack": "Armero", "medcab": "Armario médico", "pantry": "Despe
               "cabinet": "Gabinete", "chest": "Cofre"}
 ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
               "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
-              "fuel", "bottle", "planks"]
+              "fuel", "bottle", "planks", "backpack"]
 
 WEAPONS = {
     "fists": dict(name="Puños", dmg=8, rng=34, arc=2.0, cd=0.45, noise=45, targets=1, dur=None, kb=140, stam=5),
@@ -260,12 +260,12 @@ LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4), ("fuel", 0.9, 1, 1),
                  ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2)],
     "wardrobe": [("bandage", 3, 1, 2), ("bat", 1, 1, 1), ("flashlight", 1, 1, 1), ("medkit", 1, 1, 1),
-                 ("water", 1, 1, 1), ("planks", 1, 1, 2)],
+                 ("water", 1, 1, 1), ("planks", 1, 1, 2), ("backpack", 0.7, 1, 1)],
     "counter":  [("knife", 2, 1, 1), ("pan", 2, 1, 1), ("canned", 2, 1, 1), ("water", 1, 1, 1),
                  ("cookies", 2, 1, 2), ("bottle", 2, 1, 2)],
     "cabinet":  [("medkit", 1, 1, 1), ("bandage", 2, 1, 2), ("ammo", 2, 4, 9), ("battery", 2, 1, 1),
                  ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3),
-                 ("rod", 0.5, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
+                 ("rod", 0.5, 1, 1), ("backpack", 0.6, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
                  ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6), ("fuel", 1.2, 1, 1)],
 }
 LOOT["gunrack"] = [("pistol", 3, 1, 1), ("smg", 1.0, 1, 1), ("shotgun", 1.8, 1, 1), ("rifle", 1.1, 1, 1),
@@ -275,7 +275,7 @@ LOOT["medcab"] = [("medkit", 3, 1, 1), ("bandage", 5, 1, 3), ("water", 1, 1, 2),
 LOOT["pantry"] = [("canned", 5, 1, 3), ("cookies", 4, 1, 3), ("water", 4, 1, 2), ("soda", 4, 1, 3),
                   ("bottle", 1, 1, 2)]
 LOOT["toolbox"] = [("axe", 1.6, 1, 1), ("bat", 1.6, 1, 1), ("planks", 4, 2, 5), ("fuel", 3, 1, 2),
-                   ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1)]
+                   ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1), ("backpack", 0.9, 1, 1)]
 SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, muebles que llevan
     "gas": dict(name="GASOLINERA", w=(11, 13), h=(8, 9), q=1, maxd=0, doors=2, bonus=1, roof=(196, 62, 52),
                 cw=[("toolbox", 4), ("shelf", 2), ("fridge", 2)]),
@@ -288,7 +288,7 @@ SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, 
     "hospital": dict(name="HOSPITAL", w=(20, 24), h=(14, 17), q=3, maxd=3, doors=3, bonus=4, roof=(222, 222, 230),
                      cw=[("medcab", 5), ("fridge", 1), ("counter", 2), ("wardrobe", 1)]),
 }
-RARE_ITEMS = {"pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
+RARE_ITEMS = {"backpack", "pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
               "shells", "rifle_ammo", "fuel"}
 ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad del edificio
     [(0, 22), (1, 40), (2, 28), (3, 10)],
@@ -362,7 +362,7 @@ def load_cfg():
             cfg["hat"] = data["hat"]
         if isinstance(data.get("game"), dict):
             cfg["game"] = norm_settings(data["game"])
-        for k in ("fps", "fullscreen", "minimap", "fp"):
+        for k in ("fps", "fullscreen", "minimap"):
             if isinstance(data.get(k), bool):
                 cfg[k] = data[k]
         for k, v in (data.get("keys") or {}).items():
@@ -2317,13 +2317,13 @@ class Game:
     # --- inventario e interacción ---------------------------------------------------------------------------------
     def load_factor(self, p):
         """Factor de velocidad por el peso: sin penalización hasta la mitad de la capacidad."""
-        r = inv_weight(p.inv) / CAP
+        r = inv_weight(p.inv) / cap_of(p.inv)
         return 1.0 if r <= 0.5 else 1.0 - 0.35 * min(1.4, (r - 0.5) / 0.5)
 
     def room_for(self, p, item, qty):
         """Cuántas unidades de ese objeto aún te caben."""
         wt = ITEM_WEIGHT.get(item, 0.5)
-        return max(0, min(qty, int((CAP - inv_weight(p.inv)) / wt + 1e-9)))
+        return max(0, min(qty, int((cap_of(p.inv) - inv_weight(p.inv)) / wt + 1e-9)))
 
     def give(self, p, item, qty=1):
         p.inv[item] = p.inv.get(item, 0) + qty
@@ -3311,109 +3311,12 @@ FIELD_RULES = {                      # campo -> (caracteres permitidos o None, l
 }
 
 
-ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
-FP_LV = 8                    # niveles de brillo que se guardan en caché
-
-
-class FPArt:
-    """Imágenes de la vista en primera persona (carpeta assets/). Si faltan, se usa el dibujo plano."""
-    WALLS = {WALL: "brick", DOOR_C: "door", WINDOW: "window", TREE: "tree"}
-
-    def __init__(self):
-        self.img, self.cols, self.cache, self.sky, self.spr, self.hands = {}, {}, {}, {}, {}, {}
-        self.ok = False
-        try:
-            for n in ("brick", "door", "window", "tree"):
-                self.img[n] = self.load(n)
-            self.sky_src = self.load("sky")
-            self.ok = True
-        except Exception:
-            self.ok = False
-
-    @staticmethod
-    def load(name):
-        sf = pygame.image.load(os.path.join(ASSET_DIR, name + ".png"))
-        try:
-            return sf.convert_alpha()
-        except Exception:
-            return sf
-
-    @staticmethod
-    def level(sh):
-        return max(1, min(FP_LV, int(sh * FP_LV + 0.5)))
-
-    @staticmethod
-    def dim(sf, lvl, tint=False):
-        if lvl < FP_LV:
-            v = int(255 * lvl / FP_LV)
-            sf.fill((v, v, min(255, v + 14) if tint else v), special_flags=pygame.BLEND_RGB_MULT)
-        return sf
-
-    def strips(self, name, lvl):
-        k = (name, lvl)
-        r = self.cols.get(k)
-        if r is None:
-            sf = self.dim(self.img[name].copy(), lvl)
-            w, h = sf.get_size()
-            r = [sf.subsurface((i, 0, 1, h)) for i in range(w)]
-            self.cols[k] = r
-        return r
-
-    def sprite(self, name, h, lvl):
-        h = int(min(h, 1300))
-        if h < 6:
-            return None
-        h = h if h < 64 else h // max(2, h // 32) * max(2, h // 32)
-        k = (name, h, lvl)
-        sf = self.cache.get(k)
-        if sf is None:
-            src = self.spr.get(name)
-            if src is None:
-                try:
-                    src = self.spr[name] = self.load(name)
-                except Exception:
-                    return None
-            if len(self.cache) > 400:
-                self.cache.clear()
-            sf = self.dim(pygame.transform.smoothscale(src, (max(2, h // 2), h)), lvl)
-            self.cache[k] = sf
-        return sf
-
-    def hand(self, name, lvl):
-        k = (name, lvl)
-        sf = self.hands.get(k)
-        if sf is None:
-            try:
-                sf = self.dim(self.load("hand_" + name).copy(), lvl)
-            except Exception:
-                return None
-            self.hands[k] = sf
-        return sf
-
-    def sky_surface(self, lvl):
-        sf = self.sky.get(lvl)
-        if sf is None:
-            sf = pygame.transform.smoothscale(self.sky_src, (W * 3, int(H * 0.9)))
-            self.dim(sf, lvl, True)
-            self.sky[lvl] = sf
-        return sf
-
-
 class App:
     def __init__(self, auto=None):
         pygame.init()
         pygame.display.set_caption("Zomboid Py")
         self.cfg = load_cfg()
         self.gs = self.cfg["game"]
-        self.fp = bool(self.cfg.get("fp", False))          # vista en primera persona (prueba)
-        self.fp_art = None
-        self.fp_ang = 0.0
-        self.mouse_dy = 0.0
-        self.fp_pitch = 0.0                     # mirar arriba/abajo (píxeles que se mueve el horizonte)
-        self.fp_cw = FP_COLW                    # ancho de columna actual (se adapta al rendimiento)
-        self.fp_avg, self.fp_ct = 0.016, 0.0
-        self.mouse_dx = 0.0
-        self._grab = False
         self.last_dt = 0.016
         self.gset_back = "solo"
         self.bind = self.cfg["keys"]
@@ -3728,9 +3631,6 @@ class App:
             self.focus = None
         if self.ui_btn(bx, 495, 380, 62, "Salir", pygame.K_4, color=(110, 50, 50)):
             self.quit()
-        if self.ui_btn(bx, 568, 380, 44, "Vista: Primera persona (prueba)" if self.fp else "Vista: Desde arriba",
-                       None, size=26, color=(70, 60, 100)):
-            self.set_view(not self.fp)
         self.text(self.net_msg, 28, (W // 2, 640), (255, 170, 130), center=True)
         self.text("Cada partida crea un mundo nuevo - Atajos: 1 Solo, 2 Online, 3 Ajustes, 4 Salir", 24,
                   (W // 2, H - 30), (150, 155, 175), center=True)
@@ -3969,9 +3869,6 @@ class App:
             self.back_to = "pause"
             self.state = "settings"
             self.menu_open = False
-        if self.ui_btn(W // 2 - 190, 495, 380, 50, "Vista: Primera persona (prueba)" if self.fp
-                       else "Vista: Desde arriba", None, size=26, color=(70, 60, 100)):
-            self.set_view(not self.fp)
         if self.ui_btn(W // 2 - 190, 420, 380, 58, "Salir al menú principal", None, color=(110, 50, 50), size=30):
             self.back_to_title("Saliste de la partida.")
 
@@ -3987,9 +3884,6 @@ class App:
             return
         if key == b["map"]:
             self.show_map = not self.show_map
-            return
-        if key == pygame.K_F2:
-            self.set_view(not self.fp)
             return
         if key == b["inventory"] and p.alive:
             self.inv_open, self.inv_by_cont, self.inv_panel = True, False, 0
@@ -4079,59 +3973,6 @@ class App:
             cy += random.uniform(-4, 4) * k
         return cx, cy
 
-    def set_view(self, fp):
-        self.fp = bool(fp)
-        self.cfg["fp"] = self.fp
-        save_cfg(self.cfg)
-        self.mouse_dx = self.mouse_dy = 0.0
-        self.fp_pitch = 0.0
-        if self.game is not None and self.game.p is not None:
-            self.fp_ang = self.game.p.angle
-
-    def fp_capture(self, want):
-        """En primera persona el ratón gira la cámara: se oculta y se captura mientras juegas."""
-        if want == self._grab:
-            return
-        self._grab = want
-        try:
-            pygame.mouse.set_visible(not want)
-            pygame.event.set_grab(want)
-        except Exception:
-            pass
-
-    def build_input_fp(self, k, btn, locked):
-        b = self.bind
-        g = self.game
-        p = g.p
-        if not locked and p.car is None:
-            turn = (k[pygame.K_RIGHT] - k[pygame.K_LEFT]) * 2.4 * self.last_dt + self.mouse_dx * 0.0028
-            self.fp_ang = (self.fp_ang + turn) % math.tau
-        if not locked:                                          # mirar arriba/abajo: ratón, RePág/AvPág, Inicio centra
-            kp = (k[pygame.K_PAGEUP] - k[pygame.K_PAGEDOWN]) * 320.0 * self.last_dt
-            self.fp_pitch -= self.mouse_dy * 0.9 - kp
-            if k[pygame.K_HOME]:
-                self.fp_pitch *= 0.8
-            self.fp_pitch = max(-H * 0.36, min(H * 0.36, self.fp_pitch))
-        self.mouse_dx = 0.0
-        self.mouse_dy = 0.0
-        if p.car is not None:
-            self.fp_ang = p.angle
-        a = self.fp_ang
-        fwd = (k[b["up"]] or k[pygame.K_UP]) - (k[b["down"]] or k[pygame.K_DOWN])
-        side = k[b["right"]] - k[b["left"]]
-        if locked:
-            move = (0, 0)
-        elif p.car is not None:
-            move = (side, -fwd)                                # conduciendo: (girar, -acelerar)
-        else:
-            move = (math.cos(a) * fwd - math.sin(a) * side, math.sin(a) * fwd + math.cos(a) * side)
-        near = (p.x + math.cos(a) * 48, p.y + math.sin(a) * 48)
-        far = (p.x + math.cos(a) * 260, p.y + math.sin(a) * 260)
-        self.mouse_world = near if self.build_mode else far
-        return dict(move=move, run=bool(k[b["run"]] or k[pygame.K_RSHIFT]) and not locked,
-                    aim=btn[2] and not locked, attack_held=self.attack_held and not locked,
-                    demolish=bool(k[b["demolish"]]) and not locked, sneak=self.sneak, mouse=near)
-
     def build_input(self, cam):
         k = pygame.key.get_pressed()
         b = self.bind
@@ -4141,8 +3982,6 @@ class App:
         if not btn[0]:
             self.attack_held = False
         locked = self.chat is not None or self.menu_open or self.inv_open
-        if self.fp:
-            return self.build_input_fp(k, btn, locked)
         inp = dict(
             move=(0, 0) if locked else
             ((k[b["right"]] or k[pygame.K_RIGHT]) - (k[b["left"]] or k[pygame.K_LEFT]),
@@ -4234,7 +4073,7 @@ class App:
             self.inv_panel = 0
         self.text("INVENTARIO", 44, (W // 2, 30), (255, 220, 120), center=True)
         for pan, (x, title, rows) in enumerate((
-                (30, f"TUS OBJETOS ({len(left)})   Peso {inv_weight(p.inv):.1f}/{CAP:.0f} kg", left),
+                (30, f"TUS OBJETOS ({len(left)})   Peso {inv_weight(p.inv):.1f}/{cap_of(p.inv):.0f} kg", left),
                 (570, f"{CONT_NAMES.get(cv[0], 'MUEBLE').upper()} ({len(right)})" if cv else "MUEBLE", right))):
             self.ui_panel(x, 56, 500, 510)
             self.text(title, 26, (x + 14, 66), (255, 255, 255) if self.inv_panel == pan else (170, 175, 195))
@@ -4506,426 +4345,6 @@ class App:
                              (bx, by, int(TS * max(0.0, min(1.0, prog))), 6))
             pygame.draw.rect(s, (255, 255, 255), (tx * TS - ox, ty * TS - oy, TS, TS), 1)
 
-    # --- vista en primera persona (raycasting) -------------------------------------------------------------
-    def fp_shade(self, depth, camx, dark, torch):
-        """Brillo (0-1) a esa distancia: de día solo la niebla; de noche, la linterna/faros y tu propia luz."""
-        day = 0.3 + 0.7 * max(0.0, 1.0 - depth / FP_MAXD)
-        if dark <= 0.02:
-            return day
-        night = 0.05 + max(0.0, 1.0 - depth / 4.5) * 0.3
-        if torch:
-            night += max(0.0, 1.0 - abs(camx) * 2.3) * max(0.0, 1.0 - depth / 12.0) * 0.95
-        return day * (1 - dark) + min(1.0, night) * dark
-
-    @staticmethod
-    def fp_c(col, sh):
-        return (int(col[0] * sh), int(col[1] * sh), int(col[2] * sh))
-
-    def draw_fp(self):
-        s, g = self.screen, self.game
-        p, m = g.p, g.map
-        if self.fp_art is None:
-            self.fp_art = FPArt()
-        art = self.fp_art if self.fp_art.ok else None
-        # rendimiento: si va lento se usan columnas más anchas; si sobra, más finas
-        self.fp_avg += (self.last_dt - self.fp_avg) * 0.05
-        self.fp_ct += self.last_dt
-        if self.fp_ct > 0.6:
-            self.fp_ct = 0.0
-            if self.fp_avg > 1 / 30 and self.fp_cw < 12:
-                self.fp_cw += 2
-            elif self.fp_avg < 1 / 52 and self.fp_cw > FP_COLW:
-                self.fp_cw -= 2
-        ang = p.angle
-        dirx, diry = math.cos(ang), math.sin(ang)
-        planex, planey = -diry * FP_PLANE, dirx * FP_PLANE
-        dark = min(1.0, g.darkness() * self.cfg["dark"])
-        inside = m.building_at(int(p.x // TS), int(p.y // TS)) is not None
-        car = g.my_car()
-        torch = (p.flash_on and p.battery > 0) or (car is not None and car.fuel > 0)
-        oy = int(random.uniform(-3, 3) * min(1.0, g.shake * 4)) if g.shake > 0 else 0
-        bob = int(math.sin(self.t * 9) * 4) if (p.moving and p.car is None) else 0
-        hor = int(H // 2 + oy + bob + self.fp_pitch)
-        # cielo (o techo) y suelo
-        if inside:
-            top = self.fp_c((70, 62, 58), 1 - 0.85 * dark)
-            ground = (112, 86, 62)
-            s.fill(top)
-        else:
-            f = 1 - dark
-            top = (int(8 + 120 * f), int(10 + 166 * f), int(22 + 204 * f))
-            t_ground = m.tile(int(p.x // TS), int(p.y // TS))
-            ground = (84, 84, 90) if t_ground == ROAD else (66, 98, 56)
-            s.fill(top)
-            if art:
-                sk = art.sky_surface(max(1, min(FP_LV, int(math.ceil((1 - 0.92 * dark) * FP_LV)))))
-                sw = sk.get_width()
-                off = int((ang % math.tau) / math.tau * sw)
-                ty = hor - sk.get_height()
-                s.blit(sk, (-off, ty))
-                s.blit(sk, (sw - off, ty))
-        gcol = self.fp_c(ground, 0.25 + 0.75 * (1 - dark) if dark < 1 else 0.12)
-        horizon_col = self.fp_c(ground, (0.55 if dark < 0.5 else 0.2))
-        bands = 10
-        fl = H - hor
-        if fl > 0:
-            for i in range(bands):
-                y0 = hor + fl * i // bands
-                y1 = hor + fl * (i + 1) // bands
-                t = i / (bands - 1)
-                col = tuple(int(horizon_col[j] + (gcol[j] - horizon_col[j]) * t) for j in range(3))
-                pygame.draw.rect(s, col, (0, y0, W, y1 - y0 + 1))
-
-        cw = self.fp_cw
-        cols = (W + cw - 1) // cw
-        zbuf = [FP_MAXD] * cols
-        rows = m.t
-        px, py = p.x / TS, p.y / TS
-        conts = m.containers
-        all_lows = []
-        walls = art.WALLS if art else None
-        lv = FP_LV
-        for c in range(cols):
-            camx = 2.0 * (c + 0.5) / cols - 1.0
-            rdx, rdy = dirx + planex * camx, diry + planey * camx
-            mx, my = int(px), int(py)
-            ddx = abs(1.0 / rdx) if rdx else 1e30
-            ddy = abs(1.0 / rdy) if rdy else 1e30
-            if rdx < 0:
-                stepx, sdx = -1, (px - mx) * ddx
-            else:
-                stepx, sdx = 1, (mx + 1 - px) * ddx
-            if rdy < 0:
-                stepy, sdy = -1, (py - my) * ddy
-            else:
-                stepy, sdy = 1, (my + 1 - py) * ddy
-            hit = None
-            lows = []
-            while True:
-                if sdx < sdy:
-                    d = sdx
-                    sdx += ddx
-                    mx += stepx
-                    side = 0
-                else:
-                    d = sdy
-                    sdy += ddy
-                    my += stepy
-                    side = 1
-                if d > FP_MAXD:
-                    break
-                if not (0 <= mx < N and 0 <= my < N):
-                    hit = (d, WALL, side, 0.5)
-                    break
-                t = rows[my][mx]
-                if t in FP_FULL:
-                    wx = (py + d * rdy) if side == 0 else (px + d * rdx)
-                    wx -= math.floor(wx)
-                    if (side == 0 and rdx > 0) or (side == 1 and rdy < 0):
-                        wx = 1.0 - wx
-                    hit = (d, t, side, wx)
-                    break
-                if t in FP_LOW:
-                    lows.append((d, t, mx, my))
-            x = c * cw
-            if hit:
-                d, t, side, wx = hit
-                zbuf[c] = d
-                d = max(d, 0.05)
-                u = H * 0.95 / d
-                lh = int(u * FP_WALLH)
-                y0 = int(hor + u * FP_EYE - lh)
-                sh = self.fp_shade(d, camx, dark, torch) * (0.78 if side else 1.0)
-                if art:
-                    strip = art.strips(walls[t], art.level(sh))
-                    tw = len(strip)
-                    st = strip[min(tw - 1, int(wx * tw))]
-                    if lh <= H * 1.5:
-                        s.blit(pygame.transform.scale(st, (cw, max(1, lh))), (x, y0))
-                    else:                                         # muy cerca: solo se dibuja la parte visible
-                        th = st.get_height()
-                        r0 = max(0, int(-y0 / lh * th))
-                        r1 = min(th, int((H - y0) / lh * th) + 1)
-                        if r1 > r0:
-                            part = st.subsurface((0, r0, 1, r1 - r0))
-                            yy = y0 + r0 * lh // th
-                            s.blit(pygame.transform.scale(part, (cw, max(1, (r1 - r0) * lh // th + 1))), (x, yy))
-                else:
-                    col = self.fp_c(FP_COL[t], sh)
-                    if t == TREE:
-                        pygame.draw.rect(s, col, (x, y0, cw, int(lh * 0.66)))
-                        pygame.draw.rect(s, self.fp_c((92, 62, 38), sh), (x, y0 + int(lh * 0.66), cw, lh - int(lh * 0.66)))
-                    else:
-                        if wx < 0.04 or wx > 0.96:
-                            col = self.fp_c(FP_COL[t], sh * 0.8)
-                        pygame.draw.rect(s, col, (x, y0, cw, lh))
-                        if t == WALL:
-                            pygame.draw.rect(s, self.fp_c((110, 78, 62), sh), (x, y0, cw, max(1, lh // 12)))
-                        elif t == WINDOW and 0.2 < wx < 0.8:
-                            pygame.draw.rect(s, self.fp_c((190, 225, 240), sh), (x, y0 + lh // 6, cw, lh * 2 // 3))
-                        elif t == DOOR_C and 0.42 < wx < 0.5:
-                            pygame.draw.rect(s, self.fp_c((220, 190, 90), sh), (x, y0 + lh // 2, cw, max(2, lh // 14)))
-            if lows:
-                all_lows.append((x, camx, lows))
-        for x, camx, lows in all_lows:                          # muebles y agua: obstáculos bajos (más cerca que la pared)
-            for d, t, lx, ly in reversed(lows):
-                d = max(d, 0.05)
-                u = H * 0.95 / d
-                hh = u * FP_LOW[t]
-                base = hor + u * FP_EYE
-                if t == CONT:
-                    cc = conts.get((lx, ly))
-                    col = CONT_COLORS.get(cc["kind"], (150, 108, 52)) if cc else (150, 108, 52)
-                else:
-                    col = (50, 110, 190)
-                sh = self.fp_shade(d, camx, dark, torch)
-                pygame.draw.rect(s, self.fp_c(col, sh), (x, int(base - hh), cw, int(hh) + 1))
-                if t == CONT:
-                    pygame.draw.rect(s, self.fp_c((0, 0, 0), 1), (x, int(base - hh), cw, 1))
-
-        # --- sprites: zombis, jugadores, autos, objetos, cuerpos ---
-        sprites = []
-        inv_p = 1.0 / FP_PLANE
-
-        def add(kind, x, y, obj):
-            sx, sy = (x - p.x) / TS, (y - p.y) / TS
-            depth = dirx * sx + diry * sy
-            if 0.15 < depth < FP_MAXD:
-                sprites.append((depth, (dirx * sy - diry * sx) * inv_p / depth, kind, obj))
-        for z in g.zombies:
-            add("z", z.x, z.y, z)
-        drivers = {c.driver for c in g.cars if c.driver is not None}
-        for o in g.other_players():
-            if o.pid not in drivers:
-                add("pl", o.x, o.y, o)
-        for c2 in g.cars:
-            add("car", c2.x, c2.y, c2)
-        for it in g.items.values():
-            add("it", it[0], it[1], it)
-        for cx2, cy2, cang, ccol in list(g.corpses)[-60:]:
-            add("co", cx2, cy2, ccol)
-        for pr in g.projs:
-            add("pr", pr[0], pr[1], pr)
-        sprites.sort(key=lambda a: -a[0])
-        for depth, sidex, kind, obj in sprites:
-            sx = int(W / 2 * (1 + sidex))
-            unit = H * 0.95 / depth
-            gy = int(hor + unit * FP_EYE)
-            half = {"z": 0.2, "pl": 0.2, "car": 0.55, "it": 0.1, "co": 0.35, "pr": 0.06}[kind] * unit
-            if kind == "z" and obj.kind in ("brute", "breaker"):
-                half *= 1.35
-            c0, c1 = max(0, int((sx - half) // cw)), min(cols - 1, int((sx + half) // cw))
-            if c1 < c0:
-                continue
-            runs, start = [], None
-            for c in range(c0, c1 + 1):
-                if zbuf[c] > depth * 0.97:
-                    if start is None:
-                        start = c
-                elif start is not None:
-                    runs.append((start, c - 1))
-                    start = None
-            if start is not None:
-                runs.append((start, c1))
-            if not runs:
-                continue
-            camx = max(-1.0, min(1.0, sidex))
-            sh = self.fp_shade(depth, camx, dark, torch)
-            for a0, a1 in runs:
-                s.set_clip(pygame.Rect(a0 * cw, 0, (a1 - a0 + 1) * cw, H))
-                if kind == "z":
-                    self.fp_person(sx, gy, unit, sh, obj, dark)
-                elif kind == "pl":
-                    self.fp_person(sx, gy, unit, sh, obj, dark, remote_player=True)
-                elif kind == "car":
-                    self.fp_car(obj, sx, gy, unit, sh, depth, dirx, diry, p)
-                elif kind == "it":
-                    cc = ITEM_COLORS.get(ITEMS[obj[2]]["kind"], (180, 180, 120))
-                    r = max(2, int(unit * 0.07))
-                    pygame.draw.rect(s, self.fp_c(cc, max(sh, 0.25)), (sx - r, gy - 2 * r, 2 * r, 2 * r))
-                    pygame.draw.rect(s, self.fp_c((255, 255, 255), max(sh, 0.25)), (sx - r, gy - 2 * r, 2 * r, 2 * r), 1)
-                elif kind == "co":
-                    pygame.draw.ellipse(s, self.fp_c((95, 18, 18), max(sh, 0.3)),
-                                        (sx - unit * 0.3, gy - unit * 0.05, unit * 0.6, unit * 0.1))
-                    pygame.draw.ellipse(s, self.fp_c(obj, max(sh, 0.3) * 0.6),
-                                        (sx - unit * 0.18, gy - unit * 0.04, unit * 0.36, unit * 0.07))
-                else:
-                    pygame.draw.circle(s, self.fp_c((190, 220, 235), max(sh, 0.4)), (sx, int(gy - unit * 0.4)),
-                                       max(2, int(unit * 0.05)))
-            s.set_clip(None)
-        self.draw_fp_hands(hor, dark)
-
-    def fp_person(self, sx, gy, unit, sh, z, dark, remote_player=False):
-        s = self.screen
-        kind = getattr(z, "kind", "walker")
-        big = 1.3 if kind in ("brute", "breaker") else 1.0
-        hgt = unit * 0.74 * big
-        w = hgt * 0.36 * (1.25 if kind == "brute" else 1.0)
-        art = self.fp_art if (self.fp_art is not None and self.fp_art.ok) else None
-        if art is not None:
-            if remote_player:
-                base = "player"
-            elif kind in ("brute", "breaker"):
-                base = "zombie_" + kind
-            else:
-                base = "zombie_%d" % (getattr(z, "cloth_i", 0) % 6)
-            pose = "chase" if ((not remote_player) and z.state == "chase") else "idle"
-            img = art.sprite(base + "_" + pose, hgt * 1.07, art.level(max(sh, 0.12)))
-            if img is not None:
-                s.blit(img, (sx - img.get_width() // 2, int(gy - img.get_height() * 0.984)))
-                self.fp_person_tail(sx, gy, hgt, w, z, remote_player)
-                return
-        if remote_player:
-            cloth, skin = (70, 120, 200), (230, 195, 160)
-        else:
-            cloth, skin = z.cloth, z.skin
-            if kind == "runner":
-                cloth = tuple(min(255, v + 50) for v in cloth)
-            elif kind == "brute":
-                cloth = (95, 55, 55)
-            elif kind == "breaker":
-                cloth = (70, 70, 88)
-        chase = (not remote_player) and z.state == "chase"
-        legs = self.fp_c((38, 42, 58), sh)
-        pygame.draw.rect(s, legs, (sx - w * 0.46, gy - hgt * 0.42, w * 0.4, hgt * 0.42))
-        pygame.draw.rect(s, legs, (sx + w * 0.06, gy - hgt * 0.42, w * 0.4, hgt * 0.42))
-        pygame.draw.rect(s, self.fp_c(cloth, sh), (sx - w * 0.5, gy - hgt * 0.8, w, hgt * 0.4))
-        if kind == "breaker":
-            for sd in (-1, 1):
-                pygame.draw.circle(s, self.fp_c((150, 150, 165), sh), (int(sx + sd * w * 0.52), int(gy - hgt * 0.78)),
-                                   max(2, int(hgt * 0.07)))
-        arm = self.fp_c(skin, sh)
-        if chase:                                            # brazos extendidos hacia ti
-            pygame.draw.rect(s, arm, (sx - w * 0.7, gy - hgt * 0.8, w * 0.22, hgt * 0.34))
-            pygame.draw.rect(s, arm, (sx + w * 0.48, gy - hgt * 0.8, w * 0.22, hgt * 0.34))
-        else:
-            pygame.draw.rect(s, arm, (sx - w * 0.68, gy - hgt * 0.78, w * 0.2, hgt * 0.36))
-            pygame.draw.rect(s, arm, (sx + w * 0.48, gy - hgt * 0.78, w * 0.2, hgt * 0.36))
-        hr = max(2, int(hgt * 0.1))
-        hy = int(gy - hgt * 0.9)
-        pygame.draw.circle(s, arm, (sx, hy), hr)
-        if remote_player or chase or dark > 0.4:
-            er = max(1, hr // 4)
-            ec = (255, 40, 30) if not remote_player else (30, 30, 40)
-            pygame.draw.circle(s, ec, (int(sx - hr * 0.4), hy), er)
-            pygame.draw.circle(s, ec, (int(sx + hr * 0.4), hy), er)
-        self.fp_person_tail(sx, gy, hgt, w, z, remote_player)
-
-    def fp_person_tail(self, sx, gy, hgt, w, z, remote_player):
-        s = self.screen
-        if remote_player:
-            self.text(z.name, 20, (sx, int(gy - hgt * 1.12)), (200, 255, 200), center=True)
-        elif z.hp < z.max_hp:
-            bw = max(10, int(w * 1.4))
-            pygame.draw.rect(s, (110, 20, 20), (sx - bw // 2, int(gy - hgt * 1.04), bw, 4))
-            pygame.draw.rect(s, (80, 220, 80), (sx - bw // 2, int(gy - hgt * 1.04),
-                                                int(bw * max(0.0, z.hp / z.max_hp)), 4))
-
-    def fp_car(self, c, sx, gy, unit, sh, depth, dirx, diry, p):
-        s = self.screen
-        to_car = math.atan2(c.y - p.y, c.x - p.x)
-        rel = c.angle - to_car
-        cr, sr = math.cos(rel), math.sin(rel)
-        w = unit * (1.0 * abs(sr) + 0.62 * abs(cr))
-        h = unit * 0.46
-        body = self.fp_c(c.color, max(sh, 0.15))
-        pygame.draw.rect(s, body, (sx - w / 2, gy - h * 0.8, w, h * 0.55), border_radius=3)
-        pygame.draw.rect(s, self.fp_c((30, 38, 52), max(sh, 0.15)), (sx - w * 0.3, gy - h, w * 0.6, h * 0.3))
-        wr = max(2, int(h * 0.17))
-        wheel = self.fp_c((14, 14, 16), max(sh, 0.15))
-        for wx in ((-0.32, 0.32) if abs(sr) > 0.4 else (-0.4, 0.4)):
-            pygame.draw.circle(s, wheel, (int(sx + w * wx), int(gy - wr)), wr)
-        lamp = (255, 245, 190) if cr < 0 else (230, 40, 40)
-        if abs(cr) > 0.45:
-            for wx in (-0.36, 0.36):
-                pygame.draw.circle(s, lamp, (int(sx + w * wx), int(gy - h * 0.45)), max(2, int(h * 0.07)))
-
-    def draw_fp_hands(self, hor, dark=0.0):
-        """Arma o manos delante de la cámara, mira y marco del auto."""
-        s, g = self.screen, self.game
-        p = g.p
-        if not p.alive:
-            return
-        car = g.my_car()
-        cx = W // 2
-        if car:                                              # capó y volante
-            pygame.draw.polygon(s, self.fp_c(car.color, 0.6),
-                                [(cx - 330, H), (cx - 210, H - 120), (cx + 210, H - 120), (cx + 330, H)])
-            pygame.draw.polygon(s, (14, 14, 18), [(0, H), (0, H - 60), (cx - 330, H - 40), (cx - 330, H)])
-            pygame.draw.polygon(s, (14, 14, 18), [(W, H), (W, H - 60), (cx + 330, H - 40), (cx + 330, H)])
-            pygame.draw.circle(s, (20, 20, 24), (cx, H + 70), 150, 14)
-            pygame.draw.line(s, (20, 20, 24), (cx - 150, H + 70), (cx + 150, H + 70), 12)
-            return
-        bob = math.sin(self.t * 9) * 6 if p.moving else 0.0
-        sw = p.swing_t > 0
-        w = p.weapon
-        art = self.fp_art if (self.fp_art is not None and self.fp_art.ok) else None
-        himg = art.hand(w if w in WEAPON_LEN else "fists", art.level(1 - 0.6 * dark)) if art else None
-        if himg is not None:
-            self.fp_hand_img(himg, p, w, cx, bob, sw)
-        elif w in GUNS:
-            gun = GUNS[w]
-            aim = p.aiming
-            ox = cx if aim else cx + 150
-            oy = H - 30 + bob * (0.2 if aim else 1.0)
-            if p.reload_t > 0:
-                oy += 90
-            kick = 18 if sw else 0
-            oy += kick
-            ln = {"pistol": 150, "smg": 190, "shotgun": 250, "rifle": 290}[w]
-            wd = {"pistol": 30, "smg": 38, "shotgun": 34, "rifle": 28}[w]
-            metal, wood = (46, 48, 54), (110, 74, 44)
-            pygame.draw.rect(s, metal, (ox - wd / 2, oy - ln, wd, ln))
-            pygame.draw.rect(s, (28, 30, 34), (ox - wd / 2 - 4, oy - ln, wd + 8, 26))
-            if w in ("shotgun", "rifle"):
-                pygame.draw.rect(s, wood, (ox - wd / 2 - 2, oy - ln * 0.55, wd + 4, ln * 0.55))
-            if sw:                                           # fogonazo
-                pygame.draw.circle(s, (255, 230, 120), (int(ox), int(oy - ln - 6)), 28)
-                pygame.draw.circle(s, (255, 255, 220), (int(ox), int(oy - ln - 6)), 14)
-            pygame.draw.circle(s, (230, 195, 160), (int(ox - 26), int(oy - 10)), 22)
-            pygame.draw.circle(s, (230, 195, 160), (int(ox + 22), int(oy - 40)), 18)
-        elif w == "fists" or w not in WEAPON_LEN:
-            punch = 70 if sw else 0
-            pygame.draw.circle(s, (230, 195, 160), (cx - 120, int(H - 40 + bob)), 44)
-            pygame.draw.circle(s, (230, 195, 160), (cx + 120, int(H - 40 + bob - punch)), 44 + (10 if sw else 0))
-        else:
-            swing = (math.sin((0.14 - max(0.0, p.swing_t)) / 0.14 * math.pi) if sw else 0.0)
-            bx, by = cx + 170 - swing * 220, H - 20 + bob
-            tx, ty = cx + 120 - swing * 260, H - 360 + swing * 80
-            col = {"bat": (150, 110, 60), "axe": (110, 80, 50), "pan": (60, 60, 66), "knife": (200, 200, 210),
-                   "rod": (140, 110, 70)}.get(w, (180, 180, 180))
-            pygame.draw.line(s, col, (bx, by), (tx, ty), 18 if w in ("bat", "axe") else 10)
-            if w == "axe":
-                pygame.draw.polygon(s, (170, 175, 185), [(tx - 40, ty), (tx + 10, ty - 20), (tx + 10, ty + 50), (tx - 20, ty + 60)])
-            elif w == "pan":
-                pygame.draw.circle(s, (45, 45, 50), (int(tx), int(ty)), 54)
-            pygame.draw.circle(s, (230, 195, 160), (int(bx), int(by - 10)), 30)
-        col = (255, 70, 60) if p.aiming else (255, 255, 255)     # mira (siempre al centro de la pantalla)
-        cy = H // 2
-        pygame.draw.line(s, col, (cx - 9, cy), (cx + 9, cy), 2)
-        pygame.draw.line(s, col, (cx, cy - 9), (cx, cy + 9), 2)
-
-    def fp_hand_img(self, img, p, w, cx, bob, sw):
-        s = self.screen
-        iw, ih = img.get_size()
-        if w in GUNS:
-            ox = cx if p.aiming else cx + 150
-            y = H - 470 + bob * (0.2 if p.aiming else 1.0) + (18 if sw else 0) + (90 if p.reload_t > 0 else 0)
-            s.blit(img, (int(ox - iw / 2), int(y)))
-            if sw:                                            # fogonazo en la boca del arma
-                ln = {"pistol": 250, "smg": 300, "shotgun": 380, "rifle": 430}[w]
-                my = int(y + ih - ln - 56)
-                pygame.draw.circle(s, (255, 230, 120), (int(ox), my), 30)
-                pygame.draw.circle(s, (255, 255, 220), (int(ox), my), 15)
-        elif w == "fists" or w not in WEAPON_LEN:
-            punch = 70 if sw else 0
-            s.blit(img, (cx - iw // 2, int(H - 530 + bob - punch)))
-        else:
-            swing = (math.sin((0.14 - max(0.0, p.swing_t)) / 0.14 * math.pi) if sw else 0.0)
-            ccx, ccy = cx + 150 - swing * 260, H - 230 + bob + swing * 40
-            rot = img if swing <= 0.01 else pygame.transform.rotate(img, int(swing * 40))
-            s.blit(rot, (int(ccx - rot.get_width() / 2), int(ccy - rot.get_height() / 2)))
-
     def draw_car(self, c, ox, oy):
         s = self.screen
         x, y = c.x - ox, c.y - oy
@@ -5093,8 +4512,8 @@ class App:
             if car.fuel <= 0:
                 self.text("SIN GASOLINA", 40, (W // 2, 90), (255, 120, 90), center=True)
         self.text("Arma: " + wtxt, 24, (14, 40), (230, 230, 240))
-        wr = inv_weight(p.inv) / CAP
-        self.text(f"Tablones: {p.inv.get('planks', 0)}   Peso: {inv_weight(p.inv):.1f}/{CAP:.0f} kg" +
+        wr = inv_weight(p.inv) / cap_of(p.inv)
+        self.text(f"Tablones: {p.inv.get('planks', 0)}   Peso: {inv_weight(p.inv):.1f}/{cap_of(p.inv):.0f} kg" +
                   ("  (cargado: vas más lento)" if wr > 0.5 else ""), 22, (14, 62),
                   (255, 170, 120) if wr > 0.85 else (215, 190, 140))
         if p.flash_on:
@@ -5229,9 +4648,6 @@ class App:
             for e in pygame.event.get():
                 if e.type == pygame.QUIT:
                     self.quit()
-                elif e.type == pygame.MOUSEMOTION:
-                    self.mouse_dx += e.rel[0]
-                    self.mouse_dy += e.rel[1]
                 elif e.type == pygame.KEYDOWN:
                     self.on_keydown(e)
                 elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
@@ -5290,8 +4706,6 @@ class App:
     def frame_inner(self, dt):
         st = self.state
         self.last_dt = dt
-        if st != "play" and self._grab:
-            self.fp_capture(False)
         if st == "title":
             self.draw_title()
         elif st == "solo":
@@ -5320,7 +4734,6 @@ class App:
                 self.inv_panel = 0
                 if self.inv_by_cont:
                     self.inv_open = False
-            self.fp_capture(self.fp and p.alive and not (self.menu_open or self.inv_open or self.chat is not None))
             inp = self.build_input(cam)
             t0 = time.perf_counter()
             if not (self.mode == "solo" and (self.menu_open or self.inv_open)):
@@ -5328,15 +4741,11 @@ class App:
                 if self.state != "play":
                     return
             t1 = time.perf_counter()
-            if self.fp:
-                self.draw_fp()
-                t2 = t3 = time.perf_counter()
-            else:
-                self.draw_world(cam)
-                t2 = time.perf_counter()
-                self.draw_darkness(cam)
-                t3 = time.perf_counter()
-                self.draw_eyes(cam)
+            self.draw_world(cam)
+            t2 = time.perf_counter()
+            self.draw_darkness(cam)
+            t3 = time.perf_counter()
+            self.draw_eyes(cam)
             self.draw_hud()
             t4 = time.perf_counter()
             for k, v in (("logica", t1 - t0), ("mundo", t2 - t1), ("luz", t3 - t2), ("hud", t4 - t3)):
