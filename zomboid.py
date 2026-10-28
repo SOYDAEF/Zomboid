@@ -56,6 +56,8 @@ from collections import deque
 
 import pygame
 
+import pixelart as PA
+
 IS_WEB = sys.platform == "emscripten"      # True cuando corre dentro del navegador (pygbag)
 
 # ----------------------------------------------------------------------------
@@ -814,55 +816,35 @@ class GameMap:
     def draw_tile(self, s, tx, ty, px, py):
         t = self.tile(tx, ty)
         j = ((tx * 73856093) ^ (ty * 19349663)) & 15
-        d = pygame.draw
-        if t in (GRASS, TREE):
-            d.rect(s, (74 + j, 134 + j, 60 + j // 2), (px, py, TS, TS))
-            if j > 11:
-                d.line(s, (60, 112, 50), (px + 8, py + 22), (px + 10, py + 16), 1)
-                d.line(s, (60, 112, 50), (px + 20, py + 10), (px + 22, py + 5), 1)
-            if t == TREE:
-                d.circle(s, (40, 82, 40), (px + 18, py + 20), 13)
-                d.circle(s, (38 + j, 100 + j, 44), (px + 16, py + 15), 14)
-                d.circle(s, (70, 135, 62), (px + 11, py + 9), 6)
+        v = j & 3
+        solid = (WALL, WINDOW, DOOR_C)
+        if t == GRASS:
+            s.blit(PA.grass(v), (px, py))
+        elif t == TREE:
+            s.blit(PA.tree(v), (px, py))
         elif t == WATER:
-            d.rect(s, (40 + j // 2, 96 + j, 160 + j), (px, py, TS, TS))
-            d.line(s, (120, 175, 225), (px + 6, py + 10 + j // 3), (px + 16, py + 10 + j // 3), 1)
-            d.line(s, (120, 175, 225), (px + 14, py + 22), (px + 26, py + 22), 1)
+            s.blit(PA.water(v), (px, py))
         elif t == ROAD:
-            d.rect(s, (64 + j // 2, 64 + j // 2, 68 + j // 2), (px, py, TS, TS))
             r = self.road[ty][tx]
+            dash = None
             if r == 1 and (ty - 5) % 33 == 2 and tx % 2 == 0:
-                d.rect(s, (214, 190, 70), (px + 4, py, 14, 3))
+                dash = "h"
             elif r == 2 and (tx - 5) % 33 == 2 and ty % 2 == 0:
-                d.rect(s, (214, 190, 70), (px, py + 4, 3, 14))
+                dash = "v"
+            s.blit(PA.road(v, dash), (px, py))
         elif t in (FLOOR, DOOR_O, CONT):
-            d.rect(s, (150 + j // 2, 112 + j // 2, 74), (px, py, TS, TS))
-            d.line(s, (126, 92, 58), (px, py + TS - 1), (px + TS, py + TS - 1), 1)
-            if (tx + ty) % 2 == 0:
-                d.line(s, (134, 99, 62), (px + 16, py), (px + 16, py + TS), 1)
             if t == DOOR_O:
-                d.rect(s, (110, 70, 35), (px + 2, py + 2, 6, TS - 4))
+                s.blit(PA.door_open(v), (px, py))
             elif t == CONT:
                 c = self.containers.get((tx, ty), dict(kind="shelf", looted=False))
-                col = CONT_COLORS[c["kind"]]
-                if c["looted"]:
-                    col = tuple(int(v * 0.55) for v in col)
-                d.rect(s, (30, 25, 20), (px + 2, py + 2, TS - 4, TS - 4))
-                d.rect(s, col, (px + 4, py + 4, TS - 8, TS - 8))
-                d.line(s, (40, 35, 30), (px + 16, py + 5), (px + 16, py + TS - 6), 2)
-        elif t in (WALL, WINDOW):
-            d.rect(s, (70, 50, 42), (px, py, TS, TS))
-            d.rect(s, (100 + j, 76 + j, 62), (px + 1, py + 1, TS - 2, TS - 2))
-            d.line(s, (78, 58, 48), (px, py + 11), (px + TS, py + 11), 1)
-            d.line(s, (78, 58, 48), (px, py + 22), (px + TS, py + 22), 1)
-            if t == WINDOW:
-                d.rect(s, (40, 40, 50), (px + 4, py + 7, TS - 8, TS - 14))
-                d.rect(s, (150, 200, 225), (px + 6, py + 9, TS - 12, TS - 18))
-        elif t == DOOR_C:
-            d.rect(s, (70, 50, 42), (px, py, TS, TS))
-            d.rect(s, (128, 86, 44), (px + 3, py + 3, TS - 6, TS - 6))
-            d.rect(s, (80, 52, 26), (px + 3, py + 3, TS - 6, TS - 6), 2)
-            d.circle(s, (230, 200, 70), (px + TS - 9, py + TS // 2), 3)
+                s.blit(PA.cont(c["kind"], bool(c["looted"]), v), (px, py))
+            else:
+                s.blit(PA.floor(v), (px, py))
+        elif t in solid:
+            face = self.tile(tx, ty + 1) not in solid
+            s.blit(PA.wall(face, window=(t == WINDOW), door=(t == DOOR_C), v=v), (px, py))
+        if t not in solid and self.tile(tx, ty - 1) in solid:       # sombra que proyecta la pared
+            s.blit(PA.shadow_top(), (px, py))
 
     def minimap(self, size=150):
         mm = pygame.Surface((N, N))
@@ -4260,7 +4242,8 @@ class App:
         for x, y, ang, col in g.corpses:                      # cuerpos y sangre
             if -20 < x - ox < W + 20 and -20 < y - oy < H + 20:
                 pygame.draw.ellipse(s, (95, 18, 18), (x - ox - 14, y - oy - 9, 28, 18))
-                pygame.draw.ellipse(s, tuple(int(c * 0.6) for c in col), (x - ox - 9, y - oy - 6, 18, 12))
+                body = PA.person(tuple(int(c * 0.7) for c in col), (44, 48, 66), (110, 138, 104), (36, 30, 26), "down", 0, True)
+                s.blit(pygame.transform.rotate(body, 90 + (int(ang * 57) % 40 - 20)), (x - ox - 16, y - oy - 16))
 
         for cy in range(int(oy // cs) - 1, int((oy + H) // cs) + 2):     # precarga: 1 trozo por fotograma
             done = False
@@ -4276,14 +4259,21 @@ class App:
             if -60 < c.x - ox < W + 60 and -60 < c.y - oy < H + 60:
                 self.draw_car(c, ox, oy)
         drivers = {c.driver for c in g.cars if c.driver is not None}
+        actors = []
         for z in g.zombies:
             if -30 < z.x - ox < W + 30 and -30 < z.y - oy < H + 30:
-                self.draw_zombie(z, ox, oy)
+                actors.append((z.y, 0, z))
         for o in g.other_players():
             if o.pid not in drivers:
-                self.draw_player(o, ox, oy, local=False)
+                actors.append((o.y, 1, o))
         if p.alive and p.car is None:
-            self.draw_player(p, ox, oy, local=True)
+            actors.append((p.y, 2, p))
+        actors.sort(key=lambda a: a[0])
+        for _, kind, a in actors:                             # los de más abajo se dibujan encima
+            if kind == 0:
+                self.draw_zombie(a, ox, oy)
+            else:
+                self.draw_player(a, ox, oy, local=(kind == 2))
 
         for x1, y1, x2, y2, col, width, _ in g.tracers:
             pygame.draw.line(s, col, (x1 - ox, y1 - oy), (x2 - ox, y2 - oy), width)
@@ -4310,10 +4300,7 @@ class App:
             rw, rh = (b["x1"] - b["x0"] - 1) * TS, (b["y1"] - b["y0"] - 1) * TS
             if rx > W or ry > H or rx + rw < 0 or ry + rh < 0:
                 continue
-            pygame.draw.rect(s, b["roof"], (rx, ry, rw, rh))
-            dark = tuple(int(c * 0.78) for c in b["roof"])
-            pygame.draw.rect(s, dark, (rx, ry, rw, rh), 3)
-            pygame.draw.line(s, dark, (rx + rw / 2, ry), (rx + rw / 2, ry + rh), 3)
+            s.blit(PA.roof(int(rw), int(rh), tuple(b["roof"])), (int(rx), int(ry)))
             if b["q"] >= 2:                                   # marca de edificio grande (mejor botín)
                 pygame.draw.circle(s, (255, 215, 90) if b["q"] == 3 else (210, 210, 220),
                                    (int(rx + rw / 2), int(ry + rh / 2)), 7 if b["q"] == 3 else 5)
@@ -4362,74 +4349,74 @@ class App:
     def draw_car(self, c, ox, oy):
         s = self.screen
         x, y = c.x - ox, c.y - oy
-        ca, sa = math.cos(c.angle), math.sin(c.angle)
-
-        def pt(f, l):                                       # f = adelante, l = lado
-            return (x + ca * f - sa * l, y + sa * f + ca * l)
-        pygame.draw.polygon(s, (20, 20, 24), [pt(19, -11), pt(19, 11), pt(-19, 11), pt(-19, -11)])
-        for f in (-11, 11):                                  # ruedas
-            for l in (-11, 11):
-                pygame.draw.circle(s, (12, 12, 14), (int(pt(f, l)[0]), int(pt(f, l)[1])), 4)
-        body = c.color if c.hp > 30 else tuple(int(v * 0.6) for v in c.color)
-        pygame.draw.polygon(s, body, [pt(17, -9), pt(17, 9), pt(-17, 9), pt(-17, -9)])
-        pygame.draw.polygon(s, (30, 38, 52), [pt(7, -7), pt(7, 7), pt(-3, 7), pt(-3, -7)])   # parabrisas y techo
-        pygame.draw.polygon(s, tuple(int(v * 0.8) for v in body), [pt(-3, -7), pt(-3, 7), pt(-13, 7), pt(-13, -7)])
-        for l in (-6, 6):
-            pygame.draw.circle(s, (255, 245, 190), (int(pt(17, l)[0]), int(pt(17, l)[1])), 2)
+        deg = int(round(-math.degrees(c.angle) / 7.5)) * 7.5            # 48 ángulos: se mantiene el aspecto de píxeles
+        key = ("carrot", c.color, c.hp <= 30, deg)
+        spr = PA._c.get(key)
+        if spr is None:
+            if len(PA._c) > 900:
+                PA._c.clear()
+            spr = PA._c[key] = pygame.transform.rotate(PA.car(c.color, c.hp <= 30), deg)
+        sw = pygame.Surface((46, 22), pygame.SRCALPHA)
+        pygame.draw.ellipse(sw, (0, 0, 0, 70), (0, 0, 46, 22))
+        s.blit(sw, (int(x - 21), int(y - 3)))
+        s.blit(spr, (int(x - spr.get_width() / 2), int(y - spr.get_height() / 2)))
         if c.hp < 40:                                         # humo del motor
+            ca, sa = math.cos(c.angle), math.sin(c.angle)
             for k in range(3):
                 pygame.draw.circle(s, (70 + 20 * k, 70 + 20 * k, 70 + 20 * k),
-                                   (int(pt(20 + 5 * k, 0)[0] + math.sin(self.t * 6 + k) * 3),
-                                    int(pt(20 + 5 * k, 0)[1] - 4 * k)), 3 + k)
+                                   (int(x + ca * (20 + 5 * k) + math.sin(self.t * 6 + k) * 3),
+                                    int(y + sa * (20 + 5 * k) - 4 * k)), 3 + k)
+
+    @staticmethod
+    def sprite_dir(ang):
+        """Vista del sprite según hacia dónde mira: (dirección, espejo)."""
+        c, sn = math.cos(ang), math.sin(ang)
+        if abs(c) > abs(sn) * 1.15:
+            return "side", c < 0
+        return ("down" if sn > 0 else "up"), False
+
+    def draw_sprite(self, spr, x, y, flip=False):
+        s = self.screen
+        s.blit(PA.shadow(), (x - 11, y + 4))
+        if flip:
+            spr = pygame.transform.flip(spr, True, False)
+        s.blit(spr, (x - 16, y - 21))
 
     def draw_zombie(self, z, ox, oy):
-        sc = self.screen
         x, y, r = int(z.x - ox), int(z.y - oy), z.r
         kind = z.kind
-        body = z.cloth
+        shirt = z.cloth
         if kind == "runner":
-            body = tuple(min(255, c + 50) for c in z.cloth)
+            shirt = tuple(min(255, c + 50) for c in z.cloth)
         elif kind == "brute":
-            body = (95, 55, 55)
+            shirt = (95, 55, 55)
         elif kind == "breaker":
-            body = (70, 70, 88)
-        c, sn = math.cos(z.angle), math.sin(z.angle)
-        pygame.draw.circle(sc, (18, 22, 18), (x, y), r + 2)
-        pygame.draw.circle(sc, body, (x, y), r)
-        if kind == "breaker":                                   # hombreras de metal: se nota que derriba muros
-            pygame.draw.circle(sc, (200, 140, 50), (x, y), r, 2)
-            for sd in (-1.2, 1.2):
-                pygame.draw.circle(sc, (150, 150, 165), (int(x + math.cos(z.angle + sd) * (r - 2)),
-                                                         int(y + math.sin(z.angle + sd) * (r - 2))), 5)
-        if kind == "thrower":
-            pygame.draw.circle(sc, (110, 80, 50), (int(x - c * 6), int(y - sn * 6)), 5)
-        reach = (16 if kind in ("brute", "breaker") else 14) if z.state == "chase" else 11
-        ca, sa = math.cos(z.angle + 0.55), math.sin(z.angle + 0.55)
-        cb, sb = math.cos(z.angle - 0.55), math.sin(z.angle - 0.55)
-        pygame.draw.line(sc, z.skin, (int(x + ca * reach), int(y + sa * reach)), (int(x + cb * reach), int(y + sb * reach)), 5)
-        pygame.draw.circle(sc, z.skin, (int(x + c * 3), int(y + sn * 3)), 7 if kind in ("brute", "breaker") else 6)
+            shirt = (70, 70, 88)
+        d, flip = self.sprite_dir(z.angle)
+        frame = int(self.t * (9 if kind == "runner" else 5) + z.id) & 1
+        spr = PA.person(tuple(shirt), (44, 48, 66), tuple(z.skin), (36, 30, 26), d, frame, True, 4, "none", kind)
+        self.draw_sprite(spr, x, y, flip)
         if z.hp < z.max_hp:
             frac = max(0.0, z.hp / z.max_hp)
-            pygame.draw.rect(sc, (110, 20, 20), (x - 10, y - r - 8, 20, 3))
-            pygame.draw.rect(sc, (80, 220, 80), (x - 10, y - r - 8, int(20 * frac), 3))
+            pygame.draw.rect(self.screen, (110, 20, 20), (x - 10, y - 26, 20, 3))
+            pygame.draw.rect(self.screen, (80, 220, 80), (x - 10, y - 26, int(20 * frac), 3))
 
     def draw_player(self, pl, ox, oy, local=True):
         s = self.screen
         x, y = int(pl.x - ox), int(pl.y - oy)
         c, sn = math.cos(pl.angle), math.sin(pl.angle)
         wlen = WEAPON_LEN.get(pl.weapon, 0)
-        if wlen:
-            pygame.draw.line(s, (40, 40, 40), (x, y), (x + c * (PLAYER_R + wlen), y + sn * (PLAYER_R + wlen)), 4)
-        body = (70, 120, 200) if local else (80, 170, 110)
+        d, flip = self.sprite_dir(pl.angle)
+        shirt = (70, 120, 200) if local else (80, 170, 110)
         if pl.sneak:
-            body = tuple(int(v * 0.8) for v in body)
-        pygame.draw.circle(s, (15, 20, 40), (x, y), PLAYER_R + 2)
-        pygame.draw.circle(s, body, (x, y), PLAYER_R)
-        pygame.draw.circle(s, (230, 195, 160), (int(x + c * 2), int(y + sn * 2)), 5)
-        for side in (-0.6, 0.6):
-            pygame.draw.circle(s, (230, 195, 160), (int(x + math.cos(pl.angle + side) * 10),
-                                                    int(y + math.sin(pl.angle + side) * 10)), 3)
-        self.draw_hat(x, y, pl.angle, pl.hat)
+            shirt = tuple(int(v * 0.8) for v in shirt)
+        frame = int(self.t * (12 if pl.running else 8)) & 1 if pl.moving else 0
+        spr = PA.person(shirt, (50, 54, 72), (232, 196, 160), (86, 56, 36), d, frame, False, 0, pl.hat)
+        if wlen and d == "up":                                  # el arma queda detrás del cuerpo
+            pygame.draw.line(s, (40, 40, 40), (x, y - 4), (x + c * (PLAYER_R + wlen), y - 4 + sn * (PLAYER_R + wlen)), 3)
+        self.draw_sprite(spr, x, y, flip)
+        if wlen and d != "up":
+            pygame.draw.line(s, (40, 40, 40), (x, y - 4), (x + c * (PLAYER_R + wlen), y - 4 + sn * (PLAYER_R + wlen)), 3)
         if pl.swing_t > 0 and pl.weapon in WEAPONS:
             w = WEAPONS[pl.weapon]
             pts = [(x + math.cos(pl.angle + w["arc"] * (k / 8 - 0.5)) * (w["rng"] + 6),
