@@ -188,7 +188,7 @@
     }).then(function (o) { return pc.setLocalDescription(o); })
       .then(function () { return gathered(pc, 5000); })
       .then(function () { log("anfitrion " + candTypes(pc.localDescription.sdp));
-        return sigSend(S.code, id, { t: "offer", from: "host", sdp: pc.localDescription.sdp }); })
+        return sigSend(S.code, id, { t: "offer", from: "host", sdp: pc.localDescription.sdp, diag: candTypes(pc.localDescription.sdp) }); })
       .catch(function (e) { log("oferta falló: " + e); });
   }
   function hostOnAnswer(m) {
@@ -197,7 +197,7 @@
   }
   function clientOnOffer(m) {
     if (S.gotOffer) return;                              // ya estamos negociando: ignorar ofertas repetidas
-    S.gotOffer = Date.now();
+    S.gotOffer = Date.now(); S.hostDiag = m.diag || "";
     if (S.conns.host) { try { S.conns.host.pc.close(); } catch (e) {} }
     var pc, c;
     newPC().then(function (p0) {
@@ -246,7 +246,7 @@
         if (S.status !== "joining") return;
         if (S.gotOffer) {                                // la sala existe: solo falta que la red deje pasar los datos
           if (Date.now() - S.gotOffer > 30000)
-            return setErr("se encontro la sala pero la red no deja conectar los dispositivos (" + (S.diag || "sin datos") + ")");
+            return setErr("se encontro la sala pero la red no deja conectar los dispositivos (tu " + (S.diag || "sin datos") + "; anfitrion " + (S.hostDiag || "sin datos") + ")");
           S.retry = setTimeout(hello, 2000); return;
         }
         if (++tries > 6) return setErr("no se encontro la sala (codigo correcto? el anfitrion sigue con la sala abierta?)");

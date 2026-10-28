@@ -3509,6 +3509,20 @@ class App:
             pygame.draw.circle(amb, (v, v, v), (AR, AR), int(AR * (1 - i / 10)))
         self.amb = pygame.transform.smoothscale(amb, (2 * AR // LQ, 2 * AR // LQ))
 
+    def net_text(self, y):
+        """Mensaje de red en varias líneas (los errores largos no caben en una)."""
+        words, lines, cur = (self.net_msg or "").split(), [], ""
+        for w in words:
+            if len(cur) + len(w) + 1 > 70:
+                lines.append(cur)
+                cur = w
+            else:
+                cur = (cur + " " + w).strip()
+        if cur:
+            lines.append(cur)
+        for i, ln in enumerate(lines[:4]):
+            self.text(ln, 24, (W // 2, y + i * 26), (255, 170, 130), center=True)
+
     def text(self, txt, size, pos, color=(255, 255, 255), center=False, shadow=True):
         if not txt:
             return
@@ -3631,7 +3645,7 @@ class App:
             self.focus = None
         if self.ui_btn(bx, 495, 380, 62, "Salir", pygame.K_4, color=(110, 50, 50)):
             self.quit()
-        self.text(self.net_msg, 28, (W // 2, 640), (255, 170, 130), center=True)
+        self.net_text(640)
         self.text("Cada partida crea un mundo nuevo - Atajos: 1 Solo, 2 Online, 3 Ajustes, 4 Salir", 24,
                   (W // 2, H - 30), (150, 155, 175), center=True)
 
@@ -3759,7 +3773,7 @@ class App:
         if self.ui_btn(W // 2 - 150, 530, 300, 54, "Volver", pygame.K_ESCAPE, size=32):
             self.state = "title"
             self.focus = None
-        self.text(self.net_msg, 28, (W // 2, 620), (255, 170, 130), center=True)
+        self.net_text(620)
 
     def draw_online(self):
         if IS_WEB:
@@ -3797,7 +3811,7 @@ class App:
             self.focus = None
         self.text("Por internet: abre el puerto TCP en el router del anfitrión o usad una VPN (Radmin, ZeroTier...).",
                   20, (W // 2, 532), (150, 155, 175), center=True)
-        self.text(self.net_msg, 28, (W // 2, 640), (255, 170, 130), center=True)
+        self.net_text(640)
 
     def draw_settings(self):
         self.draw_menu_bg()
