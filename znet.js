@@ -18,7 +18,11 @@
   var CHUNK = 15000;       // mensajes más largos se parten (algunos navegadores limitan ~16 KB)
   var SIG_CHUNK = 2800;    // ntfy limita cada mensaje a 4 KB
   var cfg = { signal: "ntfy", base: "https://ntfy.sh", prefix: "zomboid-rtc",
-              stun: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302"], max: 5,
+              stun: ["stun:stun.l.google.com:19302", "stun:stun1.l.google.com:19302", "stun:stun.cloudflare.com:3478"],
+              max: 5,
+              /* TURN con clave temporal (el sistema "static auth" de Open Relay: usuario = hora de caducidad,
+                 clave = HMAC-SHA1 del usuario con el secreto publico). */
+              turnAuth: { host: "staticauth.openrelay.metered.ca", secret: "openrelayprojectsecret" },
               turn: [{ urls: ["turn:openrelay.metered.ca:80", "turn:openrelay.metered.ca:443",
                               "turn:openrelay.metered.ca:443?transport=tcp"],
                        username: "openrelayproject", credential: "openrelayproject" }] };
@@ -75,7 +79,7 @@
           .catch(function () { setTimeout(loop, 1000); });
       })();
     } else {
-      es = new EventSource(cfg.base + "/" + topic(room, id) + "/sse");
+      es = new EventSource(cfg.base + "/" + topic(room, id) + "/sse?since=all");
       es.onmessage = function (ev) {
         try { var d = JSON.parse(ev.data); if (d.event === "message") deliver(d.message); } catch (e) {}
       };
@@ -88,9 +92,24 @@
   /* STUN descubre la direccion publica; TURN (servidor retransmisor) es el plan B cuando las redes
      bloquean la conexion directa (redes de colegio/empresa, datos moviles). Se puede cambiar con
      ZNet.config({turn:[{urls:"turn:...", username:"...", credential:"..."}]}). */
-  function newPC() {
-    var servers = [{ urls: cfg.stun }].concat(cfg.turn || []);
-    return new RTCPeerConnection({ iceServers: servers });
+  function tempTurn() {                       // credenciales temporales para el TURN de clave compartida
+    var a = cfg.turnAuth;
+    if (!a || !window.crypto || !crypto.subtle || !window.TextEncoder) return Promise.resolve(null);
+    var user = String(Math.floor(Date.now() / 1000) + 86400), enc = new TextEncoder();
+    return crypto.subtle.importKey("raw", enc.encode(a.secret), { name: "HMAC", hash: "SHA-1" }, false, ["sign"])
+      .then(function (k) { return crypto.subtle.sign("HMAC", k, enc.encode(user)); })
+      .then(function (sig) {
+        var b = ""; new Uint8Array(sig).forEach(function (x) { b += String.fromCharCode(x); });
+        return { urls: ["turn:" + a.host + ":80", "turn:" + a.host + ":443", "turn:" + a.host + ":80?transport=tcp",
+                        "turn:" + a.host + ":443?transport=tcp", "turns:" + a.host + ":443?transport=tcp"],
+                 username: user, credential: btoa(b) };
+      }).catch(function (e) { log("no se pudo crear la clave TURN: " + e); return null; });
+  }
+  function newPC() {                           // devuelve una promesa con la conexion
+    return tempTurn().then(function (t) {
+      var servers = [{ urls: cfg.stun }].concat(t ? [t] : []).concat(cfg.turn || []);
+      return new RTCPeerConnection({ iceServers: servers });
+    });
   }
   function candTypes(sdp) {                 // resumen de las rutas que encontro este dispositivo
     var t = { host: 0, srflx: 0, relay: 0 };
@@ -160,10 +179,13 @@
     var id = m.from;
     if (openCount() >= cfg.max) { sigSend(S.code, id, { t: "full" }); return; }
     if (S.conns[id]) { try { S.conns[id].pc.close(); } catch (e) {} }
-    var pc = newPC(), c = { pc: pc, dc: pc.createDataChannel("game", { ordered: true }) };
-    S.conns[id] = c; wire(id, c);
-    pc.onconnectionstatechange = function () { log("host<->" + id + ": " + pc.connectionState); };
-    pc.createOffer().then(function (o) { return pc.setLocalDescription(o); })
+    var pc, c;
+    newPC().then(function (p0) {
+      pc = p0; c = { pc: pc, dc: pc.createDataChannel("game", { ordered: true }) };
+      S.conns[id] = c; wire(id, c);
+      pc.onconnectionstatechange = function () { log("host<->" + id + ": " + pc.connectionState); };
+      return pc.createOffer();
+    }).then(function (o) { return pc.setLocalDescription(o); })
       .then(function () { return gathered(pc, 5000); })
       .then(function () { log("anfitrion " + candTypes(pc.localDescription.sdp));
         return sigSend(S.code, id, { t: "offer", from: "host", sdp: pc.localDescription.sdp }); })
@@ -177,11 +199,14 @@
     if (S.gotOffer) return;                              // ya estamos negociando: ignorar ofertas repetidas
     S.gotOffer = Date.now();
     if (S.conns.host) { try { S.conns.host.pc.close(); } catch (e) {} }
-    var pc = newPC(), c = { pc: pc, dc: null };
-    S.conns.host = c;
-    pc.onconnectionstatechange = function () { log("cliente<->host: " + pc.connectionState); };
-    pc.ondatachannel = function (ev) { c.dc = ev.channel; wire("host", c); if (c.dc.readyState === "open") c.dc.onopen(); };
-    pc.setRemoteDescription({ type: "offer", sdp: m.sdp })
+    var pc, c;
+    newPC().then(function (p0) {
+      pc = p0; c = { pc: pc, dc: null };
+      S.conns.host = c;
+      pc.onconnectionstatechange = function () { log("cliente<->host: " + pc.connectionState); };
+      pc.ondatachannel = function (ev) { c.dc = ev.channel; wire("host", c); if (c.dc.readyState === "open") c.dc.onopen(); };
+      return pc.setRemoteDescription({ type: "offer", sdp: m.sdp });
+    })
       .then(function () { return pc.createAnswer(); })
       .then(function (a) { return pc.setLocalDescription(a); })
       .then(function () { return gathered(pc, 5000); })
