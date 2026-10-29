@@ -375,6 +375,40 @@ def load_cfg():
     return cfg
 
 
+SAVE_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lastrefuge_save.dat")
+SAVE_KEY = "lastrefuge_save"
+
+
+def store_write(text):
+    """Guarda la partida: en el navegador usa el almacenamiento local; en PC, un archivo junto al juego."""
+    try:
+        if IS_WEB:
+            import platform
+            platform.window.localStorage.setItem(SAVE_KEY, text)
+        else:
+            with open(SAVE_PATH, "w", encoding="ascii") as f:
+                f.write(text)
+        return True
+    except Exception:
+        return False
+
+
+def store_read():
+    try:
+        if IS_WEB:
+            import platform
+            v = platform.window.localStorage.getItem(SAVE_KEY)
+            return str(v) if v else None
+        with open(SAVE_PATH, "r", encoding="ascii") as f:
+            return f.read() or None
+    except Exception:
+        return None
+
+
+def save_exists():
+    return bool(store_read())
+
+
 def save_cfg(cfg):
     try:
         with open(CFG_PATH, "w", encoding="utf-8") as f:
@@ -527,6 +561,7 @@ class GameMap:
     def __init__(self, seed=None, k=None):
         self.k = k or MAP_K
         set_map_size(self.k)
+        self.mods = {}                    # casillas cambiadas durante la partida (para guardar)
         self.seed = seed if seed is not None else random.randrange(10 ** 9)
         self.rnd = random.Random(self.seed)
         self.t = [[GRASS] * N for _ in range(N)]
@@ -574,6 +609,7 @@ class GameMap:
 
     def set_tile(self, x, y, v):
         self.t[y][x] = v
+        self.mods[(x, y)] = v
         self.chunks.pop((x // CH, y // CH), None)
 
     def free(self, px, py, r):
@@ -1049,6 +1085,65 @@ class Game:
             self.p.hat = hat if hat in HATS else "none"
             self.msg("Sobrevive. Tienes una caña de pescar: equípala y pesca en un lago para comer.",
                      (255, 255, 255), self.p)
+
+    PLAYER_SAVE = ("x", "y", "angle", "hp", "hunger", "thirst", "stamina", "exhausted", "bleeding", "bleed_t",
+                   "infected", "inf_t", "inv", "cond", "weapon", "mag", "mags", "flash_on", "battery", "sneak",
+                   "kills")
+
+    def to_save(self):
+        """Estado de la partida (modo solo) como datos simples para guardar."""
+        p, m = self.p, self.map
+        conts = [[x, y, bool(c["looted"]), bool(c.get("rolled")), c.get("inv", {})]
+                 for (x, y), c in m.containers.items() if c["looted"] or c.get("rolled") or c.get("inv")]
+        return dict(
+            v=1, seed=self.seed, settings=self.settings, minutes=self.minutes, last_day=self.last_day,
+            player={k: getattr(p, k) for k in self.PLAYER_SAVE}, car=p.car,
+            tiles=[[x, y, v] for (x, y), v in m.mods.items()],
+            tile_hp=[[x, y, hp] for (x, y), hp in self.tile_hp.items()],
+            conts=conts,
+            zombies=[[round(z.x, 1), round(z.y, 1), z.kind, round(z.hp, 1), round(z.max_hp, 1)]
+                     for z in self.zombies if z.alive],
+            cars=[[c.id, round(c.x, 1), round(c.y, 1), round(c.angle, 3), c.ci, round(c.fuel, 1), round(c.hp, 1),
+                   c.driver] for c in self.cars],
+            items=[[round(it[0], 1), round(it[1], 1), it[2], it[3]] for it in self.items.values()],
+            corpses=[[round(x, 1), round(y, 1), round(a, 2), list(col)] for x, y, a, col in self.corpses],
+        )
+
+    @staticmethod
+    def from_save(d, name, hat):
+        g = Game(seed=d["seed"], name=name, hat=hat, settings=d["settings"])
+        m, p = g.map, g.p
+        g.minutes, g.last_day = float(d["minutes"]), int(d.get("last_day", 1))
+        for x, y, v in d["tiles"]:
+            m.set_tile(x, y, v)
+        g.tile_hp = {(x, y): hp for x, y, hp in d["tile_hp"]}
+        for x, y, looted, rolled, inv in d["conts"]:
+            c = m.containers.get((x, y))
+            if c is not None:
+                c["looted"], c["rolled"], c["inv"] = looted, rolled, {k: int(v) for k, v in inv.items()}
+        for k, v in d["player"].items():
+            setattr(p, k, v)
+        p.alive = p.hp > 0
+        g.zombies.clear()
+        for x, y, kind, hp, mhp in d["zombies"]:
+            z = g.new_zombie(x, y, kind)
+            z.hp, z.max_hp = hp, mhp
+        g.cars.clear()
+        for cid, x, y, ang, ci, fuel, hp, driver in d["cars"]:
+            c = Car(cid, x, y, ang, ci, fuel)
+            c.hp, c.driver = hp, driver
+            g.cars.append(c)
+            g.next_cid = max(g.next_cid, cid + 1)
+        p.car = d.get("car")
+        g.items.clear()
+        for x, y, item, qty in d["items"]:
+            g.spawn_item(x, y, item, qty)
+        g.corpses.clear()
+        for x, y, a, col in d["corpses"]:
+            g.corpses.append((x, y, a, tuple(col)))
+        p.msgs.clear()
+        g.msg("Partida cargada.", (200, 255, 200), p)
+        return g
 
     def set_settings(self, settings):
         self.settings = norm_settings(settings)
@@ -3323,6 +3418,7 @@ class App:
         self.focus = None
         self.rebind = None
         self.net_msg = ""
+        self.has_save = save_exists()
         self.chat = None
         self.server = None
         self.client = None
@@ -3414,6 +3510,30 @@ class App:
         self.stop_net()
         self.begin(Game(seed=parse_seed(seed_text), name=self.name, hat=self.cfg["hat"], settings=self.gs), "solo")
 
+    def save_game(self):
+        g = self.game
+        if self.mode != "solo" or g is None or not g.p.alive:
+            return False
+        try:
+            text = base64.b64encode(zlib.compress(json.dumps(g.to_save(), separators=(",", ":")).encode(), 6)).decode()
+        except Exception:
+            return False
+        ok = store_write(text)
+        g.msg("Partida guardada." if ok else "No se pudo guardar la partida.", (200, 255, 200) if ok else (255, 150, 130), g.p)
+        return ok
+
+    def load_game(self):
+        text = store_read()
+        if not text:
+            self.net_msg = "No hay ninguna partida guardada."
+            return
+        try:
+            data = json.loads(zlib.decompress(base64.b64decode(text)).decode())
+            self.stop_net()
+            self.begin(Game.from_save(data, self.name, self.cfg["hat"]), "solo")
+        except Exception as ex:
+            self.net_msg = f"No se pudo cargar la partida: {ex}"
+
     def start_host(self, port=None, seed_text=""):
         self.stop_net()
         try:
@@ -3461,6 +3581,7 @@ class App:
         self.chat = None
         self.menu_open = False
         self.game = None
+        self.has_save = save_exists()
 
     def act(self, a, arg=None):
         if self.mode == "client":
@@ -3615,17 +3736,25 @@ class App:
         self.text("ZOMBOID PY", 130, (W // 2, 120), (225, 60, 55), center=True)
         self.text("Sobrevive al pueblo infestado - solo o con amigos", 32, (W // 2, 200), (225, 225, 235), center=True)
         bx = W // 2 - 190
-        if self.ui_btn(bx, 270, 380, 62, "Jugar solo", pygame.K_1):
+        y = 250
+        if self.ui_btn(bx, y, 380, 58, "Jugar solo", pygame.K_1):
             self.state = "solo"
             self.focus = None
-        if self.ui_btn(bx, 345, 380, 62, "Modo online", pygame.K_2):
+        y += 68
+        if self.has_save:
+            if self.ui_btn(bx, y, 380, 58, "Continuar partida guardada", pygame.K_c, color=(60, 110, 80)):
+                self.load_game()
+            y += 68
+        if self.ui_btn(bx, y, 380, 58, "Modo online", pygame.K_2):
             self.state = "online"
             self.focus = None
-        if self.ui_btn(bx, 420, 380, 62, "Ajustes", pygame.K_3):
+        y += 68
+        if self.ui_btn(bx, y, 380, 58, "Ajustes", pygame.K_3):
             self.back_to = "title"
             self.state = "settings"
             self.focus = None
-        if self.ui_btn(bx, 495, 380, 62, "Salir", pygame.K_4, color=(110, 50, 50)):
+        y += 68
+        if self.ui_btn(bx, y, 380, 58, "Salir", pygame.K_4, color=(110, 50, 50)):
             self.quit()
         self.net_text(640)
         self.text("Cada partida crea un mundo nuevo - Atajos: 1 Solo, 2 Online, 3 Ajustes, 4 Salir", 24,
@@ -3859,14 +3988,24 @@ class App:
                   (255, 220, 120), center=True)
         if self.game.seed is not None:
             self.text(f"Semilla del mundo: {self.game.seed}", 24, (W // 2, 238), (170, 175, 195), center=True)
-        if self.ui_btn(W // 2 - 190, 270, 380, 58, "Continuar", pygame.K_ESCAPE):
+        if self.ui_btn(W // 2 - 190, 258, 380, 56, "Continuar", pygame.K_ESCAPE):
             self.menu_open = False
-        if self.ui_btn(W // 2 - 190, 345, 380, 58, "Ajustes", None):
+        by = 322
+        if self.mode == "solo":
+            if self.ui_btn(W // 2 - 190, by, 380, 56, "Guardar partida" if self.game.p.alive else "Guardar (no disponible)",
+                           None, color=(60, 110, 80)):
+                self.save_game()
+                self.has_save = save_exists()
+            by += 64
+        if self.ui_btn(W // 2 - 190, by, 380, 56, "Ajustes", None):
             self.back_to = "pause"
             self.state = "settings"
             self.menu_open = False
-        if self.ui_btn(W // 2 - 190, 420, 380, 58, "Salir al menú principal", None, color=(110, 50, 50), size=30):
-            self.back_to_title("Saliste de la partida.")
+        by += 64
+        if self.ui_btn(W // 2 - 190, by, 380, 56, "Salir al menú principal", None, color=(110, 50, 50), size=30):
+            self.back_to_title("Saliste de la partida." + (" (Lo no guardado se pierde)" if self.mode == "solo" else ""))
+        if self.mode == "solo" and self.game.p.msgs:
+            self.text(self.game.p.msgs[-1][0], 24, (W // 2, 530), (200, 255, 200), center=True)
 
     # --- entrada del juego ---------------------------------------------------------------------------------
     def on_key(self, key):
