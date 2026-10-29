@@ -1093,8 +1093,8 @@ class Game:
     def to_save(self):
         """Estado de la partida (modo solo) como datos simples para guardar."""
         p, m = self.p, self.map
-        conts = [[x, y, bool(c["looted"]), bool(c.get("rolled")), c.get("inv", {})]
-                 for (x, y), c in m.containers.items() if c["looted"] or c.get("rolled") or c.get("inv")]
+        conts = [[x, y, c["kind"], c.get("q", 0), bool(c["looted"]), bool(c.get("rolled")), c.get("inv", {})]
+                 for (x, y), c in m.containers.items()]
         return dict(
             v=1, seed=self.seed, settings=self.settings, minutes=self.minutes, last_day=self.last_day,
             player={k: getattr(p, k) for k in self.PLAYER_SAVE}, car=p.car,
@@ -1117,10 +1117,19 @@ class Game:
         for x, y, v in d["tiles"]:
             m.set_tile(x, y, v)
         g.tile_hp = {(x, y): hp for x, y, hp in d["tile_hp"]}
-        for x, y, looted, rolled, inv in d["conts"]:
-            c = m.containers.get((x, y))
-            if c is not None:
-                c["looted"], c["rolled"], c["inv"] = looted, rolled, {k: int(v) for k, v in inv.items()}
+        for row in d["conts"]:
+            if len(row) == 5:                                  # formato antiguo: solo cambios sobre el mundo generado
+                x, y, looted, rolled, inv = row
+                c = m.containers.get((x, y))
+                if c is not None:
+                    c["looted"], c["rolled"], c["inv"] = looted, rolled, {k: int(v) for k, v in inv.items()}
+            else:                                              # incluye los cofres que construiste
+                x, y, kind, q, looted, rolled, inv = row
+                m.containers[(x, y)] = dict(kind=kind, looted=looted, q=q, rolled=rolled,
+                                            inv={k: int(v) for k, v in inv.items()})
+        for key in [k for k in m.containers if m.t[k[1]][k[0]] != CONT]:      # muebles que destruiste
+            del m.containers[key]
+        m.chunks.clear()
         for k, v in d["player"].items():
             setattr(p, k, v)
         p.alive = p.hp > 0
@@ -4004,7 +4013,7 @@ class App:
         by += 64
         if self.ui_btn(W // 2 - 190, by, 380, 56, "Salir al menú principal", None, color=(110, 50, 50), size=30):
             self.back_to_title("Saliste de la partida." + (" (Lo no guardado se pierde)" if self.mode == "solo" else ""))
-        if self.mode == "solo" and self.game.p.msgs:
+        if self.game is not None and self.mode == "solo" and self.game.p.msgs:
             self.text(self.game.p.msgs[-1][0], 24, (W // 2, 530), (200, 255, 200), center=True)
 
     # --- entrada del juego ---------------------------------------------------------------------------------
