@@ -31,3 +31,7 @@ Ahora sí hay modo online para amigos
 - Explosivos: granada, cóctel molotov, dinamita y petardos (se lanzan con V).
 - Mochilas (se equipan en la ranura de espalda del inventario): pequeña +8 kg, normal +14, de montaña +24, militar +28 (máximo 50 kg en total).
 - Las listas del inventario y de los cofres tienen scroll (rueda del ratón, barra arrastrable, flechas y Re Pág/Av Pág).
+
+## Luz y zombis
+- Antorchas: «Usar» la clava en el suelo (iluminan y ningún zombi aparece a su alrededor); Interactuar la recoge.
+- Cada casa tiene un interruptor de luz junto a la esquina norte interior: Interactuar lo enciende/apaga. Con la luz encendida el interior se ve y no aparecen zombis dentro.

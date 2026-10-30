@@ -103,6 +103,13 @@ WALK, RUN, SNEAK = 95.0, 165.0, 48.0
 ACTIVE_R = 800              # solo se simulan zombis a menos de esta distancia
 FLOW_R = 26                 # radio (en tiles) del campo de pathfinding
 INTERACT_DIST = 58
+TORCH_R = 280              # radio donde una antorcha impide que aparezcan zombis
+MAX_TORCHES = 16
+
+
+def switch_pos(b):
+    """Posición del interruptor de luz de un edificio (en la pared norte, dentro, junto a la esquina)."""
+    return ((b["x0"] + 1.5) * TS, (b["y0"] + 1) * TS + 5)
 ZOMBIE_DAY = 45             # zombis que quedan de día
 ZOMBIE_NIGHT = 90 if IS_WEB else 160          # zombis que aparecen de noche
 GAME_MIN_PER_SEC = 0.8      # minutos de juego por segundo real (1 hora = 75 s)
@@ -137,6 +144,7 @@ ITEMS = {
     "pan":        dict(name="Sartén", kind="weapon"),
     "knife":      dict(name="Cuchillo", kind="weapon"),
     "flashlight": dict(name="Linterna", kind="tool"),
+    "torch":      dict(name="Antorcha", kind="torch"),
     "pack_small": dict(name="Mochila pequeña", kind="pack"),
     "backpack":   dict(name="Mochila", kind="pack"),
     "pack_hiker": dict(name="Mochila de montaña", kind="pack"),
@@ -166,7 +174,7 @@ ITEMS = {
 }
 ITEM_WEIGHT = {   # kg
     "pistol": 1.2, "smg": 3.0, "shotgun": 3.5, "rifle": 4.0, "axe": 2.0, "bat": 1.5, "pan": 1.2, "knife": 0.4,
-    "rod": 1.0, "flashlight": 0.5, "bandage": 0.1, "medkit": 0.8, "canned": 0.5, "cookies": 0.2, "fish": 0.4,
+    "rod": 1.0, "flashlight": 0.5, "torch": 0.4, "bandage": 0.1, "medkit": 0.8, "canned": 0.5, "cookies": 0.2, "fish": 0.4,
     "water": 0.6, "soda": 0.4, "battery": 0.2, "ammo": 0.03, "shells": 0.06, "rifle_ammo": 0.05, "fuel": 3.0,
     "bottle": 0.2, "planks": 0.5, "backpack": 1.0,
     "pack_small": 0.5, "pack_hiker": 1.6, "pack_mil": 2.2,
@@ -202,6 +210,7 @@ ITEM_DESC = {
     "rod": "Equípala y pulsa Interactuar frente a un lago para pescar.",
     "fish": "Pescado: quita hambre.",
     "flashlight": "Ilumina un cono delante de ti. Gasta pilas.",
+    "torch": "Antorcha: 'Usar' la clava en el suelo. Da luz y ningún zombi aparece cerca. Recógela con Interactuar.",
     "pack_small": "Mochila pequeña: equípala en la ranura de espalda y cargas 8 kg más (30 kg).",
     "backpack": "Mochila: equípala en la ranura de espalda y cargas 14 kg más (36 kg).",
     "pack_hiker": "Mochila de montaña: equípala en la ranura de espalda y cargas 24 kg más (46 kg).",
@@ -230,7 +239,7 @@ ITEM_DESC = {
 CONT_NAMES = {"gunrack": "Armero", "medcab": "Armario médico", "pantry": "Despensa",
               "toolbox": "Caja de herramientas", "fridge": "Nevera", "shelf": "Estante", "wardrobe": "Armario", "counter": "Mostrador",
               "cabinet": "Gabinete", "chest": "Cofre"}
-ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
+ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "torch", "bandage",
               "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
               "fuel", "grenade", "molotov", "dynamite", "firecracker", "bottle", "planks",
               "pack_small", "backpack", "pack_hiker", "pack_mil"]
@@ -286,7 +295,7 @@ def norm_settings(d):
 LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "fridge":   [("canned", 3, 1, 2), ("cookies", 2, 1, 2), ("water", 3, 1, 1), ("soda", 3, 1, 2), ("bottle", 1, 1, 1)],
     "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4), ("fuel", 0.9, 1, 1),
-                 ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2), ("pack_small", 0.4, 1, 1),
+                 ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2), ("pack_small", 0.4, 1, 1), ("torch", 1.2, 1, 2),
                  ("firecracker", 0.5, 1, 3), ("molotov", 0.3, 1, 1)],
     "wardrobe": [("bandage", 3, 1, 2), ("bat", 1, 1, 1), ("flashlight", 1, 1, 1), ("medkit", 1, 1, 1),
                  ("water", 1, 1, 1), ("planks", 1, 1, 2), ("backpack", 0.7, 1, 1), ("pack_small", 0.8, 1, 1),
@@ -294,7 +303,7 @@ LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "counter":  [("knife", 2, 1, 1), ("pan", 2, 1, 1), ("canned", 2, 1, 1), ("water", 1, 1, 1),
                  ("cookies", 2, 1, 2), ("bottle", 2, 1, 2), ("pack_small", 0.5, 1, 1)],
     "cabinet":  [("medkit", 1, 1, 1), ("bandage", 2, 1, 2), ("ammo", 2, 4, 9), ("battery", 2, 1, 1),
-                 ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3),
+                 ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3), ("torch", 1, 1, 2),
                  ("rod", 0.5, 1, 1), ("backpack", 0.6, 1, 1), ("pack_hiker", 0.3, 1, 1), ("pack_mil", 0.15, 1, 1),
                  ("grenade", 0.35, 1, 2), ("molotov", 0.4, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
                  ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6), ("fuel", 1.2, 1, 1)],
@@ -305,7 +314,7 @@ LOOT["gunrack"] = [("pistol", 3, 1, 1), ("smg", 1.0, 1, 1), ("shotgun", 1.8, 1, 
 LOOT["medcab"] = [("medkit", 3, 1, 1), ("bandage", 5, 1, 3), ("water", 1, 1, 2), ("cookies", 1, 1, 1)]
 LOOT["pantry"] = [("canned", 5, 1, 3), ("cookies", 4, 1, 3), ("water", 4, 1, 2), ("soda", 4, 1, 3),
                   ("bottle", 1, 1, 2), ("firecracker", 0.6, 1, 3)]
-LOOT["toolbox"] = [("axe", 1.6, 1, 1), ("bat", 1.6, 1, 1), ("planks", 4, 2, 5), ("fuel", 3, 1, 2),
+LOOT["toolbox"] = [("axe", 1.6, 1, 1), ("bat", 1.6, 1, 1), ("planks", 4, 2, 5), ("fuel", 3, 1, 2), ("torch", 3, 1, 3),
                    ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1), ("backpack", 0.9, 1, 1),
                    ("pack_hiker", 0.5, 1, 1), ("dynamite", 0.7, 1, 2), ("molotov", 0.8, 1, 2), ("firecracker", 0.8, 2, 4)]
 SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, muebles que llevan
@@ -940,7 +949,7 @@ class Player:
         self.bleed_t = 0.0
         self.infected = False
         self.inf_t = 0.0
-        self.inv = {"bandage": 1, "water": 1, "canned": 1, "flashlight": 1, "planks": 6, "rod": 1}
+        self.inv = {"bandage": 1, "water": 1, "canned": 1, "flashlight": 1, "planks": 6, "rod": 1, "torch": 2}
         self.cond = {}
         self.weapon = "fists"
         self.mag = 0
@@ -1096,6 +1105,8 @@ class Game:
         self.fx = []                     # efectos visuales: [x, y, tipo, ttl]
         self.bombs = []                  # explosivos lanzados: dict(x, y, vx, vy, fl, fuse, item, owner, tick)
         self.fires = []                  # fuego de molotov: [x, y, ttl, dueño]
+        self.torches = []                # antorchas clavadas en el suelo: [x, y]
+        self.lit = set()                 # índices de edificios con la luz encendida
         self.tile_hp = {}
         self.shake = 0.0
         self.flows = {}
@@ -1134,7 +1145,7 @@ class Game:
             player={k: getattr(p, k) for k in self.PLAYER_SAVE}, car=p.car,
             tiles=[[x, y, v] for (x, y), v in m.mods.items()],
             tile_hp=[[x, y, hp] for (x, y), hp in self.tile_hp.items()],
-            conts=conts,
+            conts=conts, torches=[list(t) for t in self.torches], lit=sorted(self.lit),
             zombies=[[round(z.x, 1), round(z.y, 1), z.kind, round(z.hp, 1), round(z.max_hp, 1)]
                      for z in self.zombies if z.alive],
             cars=[[c.id, round(c.x, 1), round(c.y, 1), round(c.angle, 3), c.ci, round(c.fuel, 1), round(c.hp, 1),
@@ -1171,6 +1182,8 @@ class Game:
         if p.thr not in THROWABLES:
             p.thr = "bottle"
         p.alive = p.hp > 0
+        g.torches = [[float(t[0]), float(t[1])] for t in d.get("torches", [])][:MAX_TORCHES]
+        g.lit = {i for i in d.get("lit", []) if isinstance(i, int) and 0 <= i < len(m.buildings)}
         g.zombies.clear()
         for x, y, kind, hp, mhp in d["zombies"]:
             z = g.new_zombie(x, y, kind)
@@ -1289,6 +1302,13 @@ class Game:
         """¿Hay luz en este punto? (sol o la luz de algún jugador). Los zombis no aparecen con luz."""
         if self.darkness() < 0.25:
             return True
+        for t in self.torches:
+            if math.hypot(x - t[0], y - t[1]) < TORCH_R:
+                return True
+        if self.lit:
+            b = self.map.building_at(int(x // TS), int(y // TS))
+            if b is not None and self.map.buildings.index(b) in self.lit:
+                return True
         for pl in self.players.values():
             if not pl.alive:
                 continue
@@ -2258,6 +2278,38 @@ class Game:
                 if d <= rad * 0.55:
                     self.damage_tile(tx, ty, cfg["td"] * (1.0 - 0.6 * d / (rad * 0.55)), None)
 
+    def place_torch(self, p):
+        if len(self.torches) >= MAX_TORCHES:
+            self.msg("Ya hay demasiadas antorchas encendidas.", (255, 190, 90), p)
+            return
+        x, y = p.x + math.cos(p.angle) * 22, p.y + math.sin(p.angle) * 22
+        if not self.map.free(x, y, 3):
+            x, y = p.x, p.y
+        if any(math.hypot(x - t[0], y - t[1]) < 30 for t in self.torches):
+            self.msg("Ahí ya hay una antorcha.", (200, 200, 200), p)
+            return
+        self.remove_item(p, "torch", 1)
+        self.torches.append([round(x, 1), round(y, 1)])
+        self.msg("Clavas una antorcha: no aparecerán zombis cerca. (Interactuar para recogerla)", (255, 210, 120), p)
+
+    def toggle_switch(self, p, b_idx):
+        if b_idx in self.lit:
+            self.lit.discard(b_idx)
+            self.msg("Apagas la luz.", (200, 200, 210), p)
+        else:
+            self.lit.add(b_idx)
+            self.msg("Enciendes la luz: no aparecerán zombis aquí dentro.", (255, 235, 150), p)
+        self.make_noise(p.x, p.y, 40)
+
+    def near_switch(self, p):
+        best = None
+        for i, b in enumerate(self.map.buildings):
+            sx, sy = switch_pos(b)
+            d = math.hypot(sx - p.x, sy - p.y)
+            if d < 46 and (best is None or d < best[0]):
+                best = (d, i)
+        return best
+
     def unequip_pack(self, p):
         if p.back not in PACKS:
             return
@@ -2597,6 +2649,8 @@ class Game:
         kind = ITEMS[item]["kind"]
         if kind == "pack":
             self.equip_pack(p, item)
+        elif kind == "torch":
+            self.place_torch(p)
         elif kind == "bomb":
             p.thr = item
             self.msg(f"Preparado: {ITEMS[item]['name']}. Lánzalo con la tecla de lanzar (V).", (255, 210, 120), p)
@@ -2742,6 +2796,19 @@ class Game:
         car = self.car_near(p)
         if car:
             self.enter_car(p, car)
+            return
+        sw = self.near_switch(p)
+        if sw:
+            self.toggle_switch(p, sw[1])
+            return
+        tc = next((t for t in self.torches if math.hypot(t[0] - p.x, t[1] - p.y) < 40), None)
+        if tc:
+            if self.room_for(p, "torch", 1) <= 0:
+                self.msg("Llevas demasiado peso.", (255, 190, 90), p)
+            else:
+                self.torches.remove(tc)
+                self.give(p, "torch", 1)
+                self.msg("Recoges la antorcha.", (170, 255, 190), p)
             return
         gnd = self.find_ground(p)
         b = self.find_interact(p)
@@ -3152,6 +3219,7 @@ class Server:
                if abs(pr[0] - pl.x) < VIEW_R and abs(pr[1] - pl.y) < VIEW_R]
         bb = [[round(b["x"], 1), round(b["y"], 1), b["item"]] for b in g.bombs
               if abs(b["x"] - pl.x) < VIEW_R and abs(b["y"] - pl.y) < VIEW_R]
+        tc = [t for t in g.torches if abs(t[0] - pl.x) < VIEW_R + 200 and abs(t[1] - pl.y) < VIEW_R + 200]
         fr = [[round(f[0], 1), round(f[1], 1), round(f[2], 1)] for f in g.fires
               if abs(f[0] - pl.x) < VIEW_R and abs(f[1] - pl.y) < VIEW_R]
         gi = [[it[4], round(it[0]), round(it[1]), it[2], it[3]] for it in g.items.values()
@@ -3160,7 +3228,7 @@ class Server:
                  -1 if c.driver is None else c.driver, c.ci, int(c.v)]
                 for c in g.cars if abs(c.x - pl.x) < VIEW_R + 200 and abs(c.y - pl.y) < VIEW_R + 200]
         msgs, pl.outbox = pl.outbox, []
-        return {"t": "snap", "cars": cars, "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "bb": bb, "fr": fr, "msg": msgs,
+        return {"t": "snap", "cars": cars, "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "bb": bb, "fr": fr, "tc": tc, "lb": sorted(g.lit), "msg": msgs,
                 "ev": {"tr": g.ev_tracers, "co": g.ev_corpses, "ti": g.ev_tiles, "lo": g.ev_loot,
                        "fx": g.ev_fx, "ct": g.ev_cont}}
 
@@ -3416,6 +3484,7 @@ class ClientGame(Game):
         self.tracers = []
         self.projs = []
         self.bombs, self.fires = [], []
+        self.torches, self.lit = [], set()
         self.fx = []
         self.set_settings(welcome.get("gs"))
         self.cars = []
@@ -3507,6 +3576,8 @@ class ClientGame(Game):
         self.projs = [[x, y, 0, 0, 0, k, 0] for x, y, k in s.get("pr", [])]
         self.bombs = [dict(x=x, y=y, item=it) for x, y, it in s.get("bb", [])]
         self.fires = [[x, y, t] for x, y, t in s.get("fr", [])]
+        self.torches = [list(t) for t in s.get("tc", [])]
+        self.lit = set(s.get("lb", []))
         cm, cnew = {}, []
         for cid2, x, y, a, fu, hp, dr, ci, v in s.get("cars", []):
             c = self._cmap.get(cid2)
@@ -3566,7 +3637,7 @@ def run_dedicated(port, seed=None, settings=None):
 # Interfaz: menús (modo inmediato), ajustes, dibujo del mundo y HUD
 # ----------------------------------------------------------------------------
 ITEM_COLORS = {"weapon": (205, 205, 215), "food": (225, 150, 60), "drink": (80, 150, 230),
-               "material": (170, 125, 70), "pack": (150, 110, 190), "bomb": (230, 70, 60)}
+               "material": (170, 125, 70), "pack": (150, 110, 190), "bomb": (230, 70, 60), "torch": (240, 170, 60)}
 
 FIELD_RULES = {                      # campo -> (caracteres permitidos o None, longitud máxima)
     "room": ("ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjklmnpqrstuvwxyz", 6),
@@ -3802,6 +3873,13 @@ class App:
             v = int(255 * (i + 1) / 10)
             pygame.draw.circle(amb, (v, v, v), (AR, AR), int(AR * (1 - i / 10)))
         self.amb = pygame.transform.smoothscale(amb, (2 * AR // LQ, 2 * AR // LQ))
+        TR = 170                                                 # luz cálida de antorcha
+        tl = pygame.Surface((2 * TR, 2 * TR), 0, 32)
+        tl.fill((0, 0, 0))
+        for i in range(14):
+            v = (i + 1) / 14
+            pygame.draw.circle(tl, (int(235 * v), int(185 * v), int(110 * v)), (TR, TR), int(TR * (1 - i / 14)))
+        self.torch_spr = pygame.transform.smoothscale(tl, (2 * TR // LQ, 2 * TR // LQ))
 
     def net_text(self, y):
         """Mensaje de red en varias líneas (los errores largos no caben en una)."""
@@ -4671,6 +4749,23 @@ class App:
             else:
                 pygame.draw.circle(s, (180, 220, 240), (int(x), int(y)), 4)
                 pygame.draw.circle(s, (255, 255, 255), (int(x) - 1, int(y) - 1), 1)
+        for t in g.torches:                                   # antorchas clavadas
+            tx_, ty_ = int(t[0] - ox), int(t[1] - oy)
+            if -20 < tx_ < W + 20 and -20 < ty_ < H + 20:
+                fl = 0.5 + 0.5 * math.sin(self.t * 12 + t[0])
+                pygame.draw.rect(s, (90, 60, 35), (tx_ - 2, ty_ - 2, 4, 12))
+                pygame.draw.circle(s, (220, 90, 25), (tx_, ty_ - 5), 5 + int(2 * fl))
+                pygame.draw.circle(s, (255, 200, 80), (tx_, ty_ - 6), 3 + int(fl))
+        for bi, b in enumerate(m.buildings):                  # interruptores de luz
+            sx_, sy_ = switch_pos(b)
+            sx_, sy_ = int(sx_ - ox), int(sy_ - oy)
+            if -20 < sx_ < W + 20 and -20 < sy_ < H + 20:
+                on = bi in g.lit
+                pygame.draw.rect(s, (230, 230, 225), (sx_ - 5, sy_ - 6, 10, 12), border_radius=2)
+                pygame.draw.rect(s, (255, 220, 90) if on else (110, 110, 115), (sx_ - 2, sy_ - 4 if on else sy_, 4, 4))
+                if math.hypot(sx_ + ox - p.x, sy_ + oy - p.y) < 70:
+                    self.text("Luz: " + ("apagar" if on else "encender") + " (Interactuar)", 18, (sx_, sy_ + 18),
+                              (255, 240, 170), center=True)
         for f in g.fires:                                     # fuego de molotov
             fx_, fy_ = int(f[0] - ox), int(f[1] - oy)
             fl = 0.5 + 0.5 * math.sin(self.t * 14 + f[0])
@@ -4844,6 +4939,20 @@ class App:
                 rot = pygame.transform.rotate(self.cone, -math.degrees(pl.angle))
                 lo.blit(rot, (int(sx - rot.get_width() / 2), int(sy - rot.get_height() / 2)),
                         special_flags=pygame.BLEND_RGB_ADD)
+        for t in g.torches:                               # antorchas
+            sx, sy = (t[0] - cam[0]) / LQ, (t[1] - cam[1]) / LQ
+            if -300 < sx < W / LQ + 300 and -300 < sy < H / LQ + 300:
+                lo.blit(self.torch_spr, (int(sx - self.torch_spr.get_width() / 2), int(sy - self.torch_spr.get_height() / 2)),
+                        special_flags=pygame.BLEND_RGB_ADD)
+        for bi in g.lit:                                  # casas con la luz encendida
+            b = g.map.buildings[bi] if bi < len(g.map.buildings) else None
+            if b is None:
+                continue
+            rx, ry = ((b["x0"] + 1) * TS - cam[0]) / LQ, ((b["y0"] + 1) * TS - cam[1]) / LQ
+            rw, rh = (b["x1"] - b["x0"] - 1) * TS / LQ, (b["y1"] - b["y0"] - 1) * TS / LQ
+            if rx > W / LQ or ry > H / LQ or rx + rw < 0 or ry + rh < 0:
+                continue
+            lo.fill((235, 215, 150), (int(rx), int(ry), int(rw) + 1, int(rh) + 1), special_flags=pygame.BLEND_RGB_ADD)
         for c in g.cars:                                  # faros de los autos con conductor
             if c.driver is not None and c.fuel > 0:
                 sx, sy = (c.x - cam[0]) / LQ, (c.y - cam[1]) / LQ
