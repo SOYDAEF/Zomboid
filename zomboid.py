@@ -137,7 +137,14 @@ ITEMS = {
     "pan":        dict(name="Sartén", kind="weapon"),
     "knife":      dict(name="Cuchillo", kind="weapon"),
     "flashlight": dict(name="Linterna", kind="tool"),
-    "backpack":   dict(name="Mochila", kind="tool"),
+    "pack_small": dict(name="Mochila pequeña", kind="pack"),
+    "backpack":   dict(name="Mochila", kind="pack"),
+    "pack_hiker": dict(name="Mochila de montaña", kind="pack"),
+    "pack_mil":   dict(name="Mochila militar", kind="pack"),
+    "grenade":    dict(name="Granada", kind="bomb"),
+    "molotov":    dict(name="Cóctel molotov", kind="bomb"),
+    "dynamite":   dict(name="Dinamita", kind="bomb"),
+    "firecracker": dict(name="Petardos", kind="bomb"),
     "bandage":    dict(name="Venda", kind="med"),
     "medkit":     dict(name="Botiquín", kind="med"),
     "canned":     dict(name="Comida enlatada", kind="food", amount=40),
@@ -162,13 +169,24 @@ ITEM_WEIGHT = {   # kg
     "rod": 1.0, "flashlight": 0.5, "bandage": 0.1, "medkit": 0.8, "canned": 0.5, "cookies": 0.2, "fish": 0.4,
     "water": 0.6, "soda": 0.4, "battery": 0.2, "ammo": 0.03, "shells": 0.06, "rifle_ammo": 0.05, "fuel": 3.0,
     "bottle": 0.2, "planks": 0.5, "backpack": 1.0,
+    "pack_small": 0.5, "pack_hiker": 1.6, "pack_mil": 2.2,
+    "grenade": 0.5, "molotov": 0.6, "dynamite": 0.8, "firecracker": 0.1,
 }
 CAP = 22.0                  # kg que puedes llevar
-BACKPACK_CAP = 14.0         # kg extra al llevar una mochila
+PACKS = {"pack_small": 8.0, "backpack": 14.0, "pack_hiker": 24.0, "pack_mil": 28.0}   # kg extra de cada mochila (máx. 22+28 = 50)
+THROWABLES = ("grenade", "molotov", "dynamite", "firecracker", "bottle")
+# explosivos: fuse = segundos tras caer, rad = radio, zd = daño a zombis, pd = daño a jugadores, td = daño a paredes
+BOMBS = {
+    "grenade":     dict(fuse=1.6, rad=120, zd=190, pd=55, td=70, noise=950, kb=420),
+    "dynamite":    dict(fuse=3.0, rad=170, zd=400, pd=95, td=220, noise=1100, kb=600),
+    "molotov":     dict(fuse=0.0, rad=0, zd=0, pd=0, td=0, noise=420, kb=0),
+    "firecracker": dict(fuse=2.4, rad=0, zd=0, pd=0, td=0, noise=900, kb=0),
+}
 
 
-def cap_of(inv):
-    return CAP + (BACKPACK_CAP if inv.get("backpack", 0) > 0 else 0.0)
+def cap_of(back=""):
+    """Capacidad en kg según la mochila que llevas puesta (texto con el nombre del objeto, o vacío)."""
+    return CAP + PACKS.get(back or "", 0.0)
 
 
 def inv_weight(inv):
@@ -184,7 +202,14 @@ ITEM_DESC = {
     "rod": "Equípala y pulsa Interactuar frente a un lago para pescar.",
     "fish": "Pescado: quita hambre.",
     "flashlight": "Ilumina un cono delante de ti. Gasta pilas.",
-    "backpack": "Mientras la lleves, puedes cargar 14 kg más.",
+    "pack_small": "Mochila pequeña: equípala en la ranura de espalda y cargas 8 kg más (30 kg).",
+    "backpack": "Mochila: equípala en la ranura de espalda y cargas 14 kg más (36 kg).",
+    "pack_hiker": "Mochila de montaña: equípala en la ranura de espalda y cargas 24 kg más (46 kg).",
+    "pack_mil": "Mochila militar: la más grande. Equípala y cargas 28 kg más: 50 kg en total.",
+    "grenade": "Granada: 'Usar' la prepara, V la lanza. Explota 1,6 s después de caer. Rompe paredes débiles. ¡Aléjate!",
+    "molotov": "Cóctel molotov: V lo lanza y al caer deja fuego unos segundos. Quema zombis (y a ti si te acercas).",
+    "dynamite": "Dinamita: V la lanza, explota a los 3 s con enorme radio. Destruye paredes y puertas. ¡Mucho cuidado!",
+    "firecracker": "Petardos: V los lanza, hacen mucho ruido unos segundos y atraen zombis lejos de ti.",
     "bandage": "Detiene el sangrado.",
     "medkit": "Cura 45 de salud y detiene el sangrado.",
     "canned": "Comida enlatada: quita mucha hambre.",
@@ -207,7 +232,8 @@ CONT_NAMES = {"gunrack": "Armero", "medcab": "Armario médico", "pantry": "Despe
               "cabinet": "Gabinete", "chest": "Cofre"}
 ITEM_ORDER = ["rifle", "shotgun", "smg", "pistol", "axe", "bat", "pan", "knife", "rod", "flashlight", "bandage",
               "medkit", "canned", "cookies", "fish", "water", "soda", "battery", "ammo", "shells", "rifle_ammo",
-              "fuel", "bottle", "planks", "backpack"]
+              "fuel", "grenade", "molotov", "dynamite", "firecracker", "bottle", "planks",
+              "pack_small", "backpack", "pack_hiker", "pack_mil"]
 
 WEAPONS = {
     "fists": dict(name="Puños", dmg=8, rng=34, arc=2.0, cd=0.45, noise=45, targets=1, dur=None, kb=140, stam=5),
@@ -260,24 +286,28 @@ def norm_settings(d):
 LOOT = {   # (objeto, peso, cantidad mínima, máxima)
     "fridge":   [("canned", 3, 1, 2), ("cookies", 2, 1, 2), ("water", 3, 1, 1), ("soda", 3, 1, 2), ("bottle", 1, 1, 1)],
     "shelf":    [("canned", 3, 1, 2), ("cookies", 3, 1, 2), ("battery", 2, 1, 1), ("ammo", 1, 4, 8), ("shells", 0.5, 2, 4), ("fuel", 0.9, 1, 1),
-                 ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2)],
+                 ("bandage", 1, 1, 1), ("planks", 2, 2, 4), ("bottle", 2, 1, 2), ("pack_small", 0.4, 1, 1),
+                 ("firecracker", 0.5, 1, 3), ("molotov", 0.3, 1, 1)],
     "wardrobe": [("bandage", 3, 1, 2), ("bat", 1, 1, 1), ("flashlight", 1, 1, 1), ("medkit", 1, 1, 1),
-                 ("water", 1, 1, 1), ("planks", 1, 1, 2), ("backpack", 0.7, 1, 1)],
+                 ("water", 1, 1, 1), ("planks", 1, 1, 2), ("backpack", 0.7, 1, 1), ("pack_small", 0.8, 1, 1),
+                 ("pack_hiker", 0.3, 1, 1)],
     "counter":  [("knife", 2, 1, 1), ("pan", 2, 1, 1), ("canned", 2, 1, 1), ("water", 1, 1, 1),
-                 ("cookies", 2, 1, 2), ("bottle", 2, 1, 2)],
+                 ("cookies", 2, 1, 2), ("bottle", 2, 1, 2), ("pack_small", 0.5, 1, 1)],
     "cabinet":  [("medkit", 1, 1, 1), ("bandage", 2, 1, 2), ("ammo", 2, 4, 9), ("battery", 2, 1, 1),
                  ("pistol", 0.35, 1, 1), ("axe", 0.5, 1, 1), ("flashlight", 1, 1, 1), ("planks", 1, 2, 3),
-                 ("rod", 0.5, 1, 1), ("backpack", 0.6, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
+                 ("rod", 0.5, 1, 1), ("backpack", 0.6, 1, 1), ("pack_hiker", 0.3, 1, 1), ("pack_mil", 0.15, 1, 1),
+                 ("grenade", 0.35, 1, 2), ("molotov", 0.4, 1, 1), ("shotgun", 0.22, 1, 1), ("rifle", 0.14, 1, 1), ("smg", 0.10, 1, 1),
                  ("shells", 1.3, 3, 6), ("rifle_ammo", 0.9, 3, 6), ("fuel", 1.2, 1, 1)],
 }
 LOOT["gunrack"] = [("pistol", 3, 1, 1), ("smg", 1.0, 1, 1), ("shotgun", 1.8, 1, 1), ("rifle", 1.1, 1, 1),
                    ("ammo", 3, 6, 14), ("shells", 3, 4, 8), ("rifle_ammo", 2, 4, 8), ("bandage", 1, 1, 2),
-                   ("flashlight", 1, 1, 1)]
+                   ("flashlight", 1, 1, 1), ("grenade", 1.2, 1, 3), ("pack_mil", 0.9, 1, 1), ("dynamite", 0.4, 1, 1)]
 LOOT["medcab"] = [("medkit", 3, 1, 1), ("bandage", 5, 1, 3), ("water", 1, 1, 2), ("cookies", 1, 1, 1)]
 LOOT["pantry"] = [("canned", 5, 1, 3), ("cookies", 4, 1, 3), ("water", 4, 1, 2), ("soda", 4, 1, 3),
-                  ("bottle", 1, 1, 2)]
+                  ("bottle", 1, 1, 2), ("firecracker", 0.6, 1, 3)]
 LOOT["toolbox"] = [("axe", 1.6, 1, 1), ("bat", 1.6, 1, 1), ("planks", 4, 2, 5), ("fuel", 3, 1, 2),
-                   ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1), ("backpack", 0.9, 1, 1)]
+                   ("battery", 2.5, 1, 2), ("knife", 1, 1, 1), ("flashlight", 1.2, 1, 1), ("pan", 0.8, 1, 1), ("backpack", 0.9, 1, 1),
+                   ("pack_hiker", 0.5, 1, 1), ("dynamite", 0.7, 1, 2), ("molotov", 0.8, 1, 2), ("firecracker", 0.8, 2, 4)]
 SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, muebles que llevan
     "gas": dict(name="GASOLINERA", w=(11, 13), h=(8, 9), q=1, maxd=0, doors=2, bonus=1, roof=(196, 62, 52),
                 cw=[("toolbox", 4), ("shelf", 2), ("fridge", 2)]),
@@ -290,7 +320,7 @@ SPECIAL = {   # edificios especiales: tamaño (ancho, alto), calidad de botín, 
     "hospital": dict(name="HOSPITAL", w=(20, 24), h=(14, 17), q=3, maxd=3, doors=3, bonus=4, roof=(222, 222, 230),
                      cw=[("medcab", 5), ("fridge", 1), ("counter", 2), ("wardrobe", 1)]),
 }
-RARE_ITEMS = {"backpack", "pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
+RARE_ITEMS = {"backpack", "pack_small", "pack_hiker", "pack_mil", "grenade", "molotov", "dynamite", "pistol", "axe", "medkit", "ammo", "bat", "battery", "flashlight", "shotgun", "rifle", "smg",
               "shells", "rifle_ammo", "fuel"}
 ITEM_COUNT_BY_QUALITY = [   # cuántos objetos da un mueble según la calidad del edificio
     [(0, 22), (1, 40), (2, 28), (3, 10)],
@@ -304,7 +334,7 @@ CONT_COLORS = {"gunrack": (66, 78, 58), "medcab": (236, 242, 246), "pantry": (20
                "counter": (172, 162, 142), "cabinet": (122, 128, 140), "chest": (150, 108, 52)}
 ROOF_COLORS = [(140, 70, 60), (112, 92, 72), (88, 100, 122), (122, 60, 72), (98, 112, 92)]
 ACTIONS = {"click", "shove", "interact", "reload", "flash", "cycle", "bandage", "consume", "use",
-           "respawn", "build", "throw", "take", "put", "drop", "closec", "hat"}
+           "respawn", "build", "throw", "take", "put", "drop", "closec", "hat", "unequip"}
 
 # ----------------------------------------------------------------------------
 # Zombis: tipos y habilidades
@@ -327,7 +357,7 @@ BIND_LABELS = [
     ("run", "Correr"), ("sneak", "Furtivo"), ("interact", "Interactuar"), ("flash", "Linterna"),
     ("reload", "Recargar"), ("cycle", "Cambiar arma"), ("shove", "Empujar"), ("bandage", "Usar venda"),
     ("consume", "Comer / beber"), ("build", "Modo construir"), ("demolish", "Destruir (mantener)"),
-    ("throw", "Lanzar botella"), ("inventory", "Inventario"), ("map", "Minimapa"), ("chat", "Chat"),
+    ("throw", "Lanzar (botella/explosivo)"), ("inventory", "Inventario"), ("map", "Minimapa"), ("chat", "Chat"),
     ("pause", "Pausa (solo)"),
 ]
 
@@ -926,6 +956,8 @@ class Player:
         self.swing_t = 0.0
         self.noise_t = 0.0
         self.throw_cd = 0.0
+        self.back = ""                  # mochila puesta (ranura de espalda)
+        self.thr = "bottle"             # objeto que se lanza con la tecla de lanzar
         self.drink_cd = 0.0
         self.demo_noise = 0.0
         self.tool_wear = 0.0
@@ -1062,6 +1094,8 @@ class Game:
         self.tracers = []
         self.projs = []                  # proyectiles: [x, y, vx, vy, ttl, tipo, dueño]  tipo 0 roca, 1 botella, 2 botella del jugador
         self.fx = []                     # efectos visuales: [x, y, tipo, ttl]
+        self.bombs = []                  # explosivos lanzados: dict(x, y, vx, vy, fl, fuse, item, owner, tick)
+        self.fires = []                  # fuego de molotov: [x, y, ttl, dueño]
         self.tile_hp = {}
         self.shake = 0.0
         self.flows = {}
@@ -1088,7 +1122,7 @@ class Game:
 
     PLAYER_SAVE = ("x", "y", "angle", "hp", "hunger", "thirst", "stamina", "exhausted", "bleeding", "bleed_t",
                    "infected", "inf_t", "inv", "cond", "weapon", "mag", "mags", "flash_on", "battery", "sneak",
-                   "kills")
+                   "kills", "back", "thr")
 
     def to_save(self):
         """Estado de la partida (modo solo) como datos simples para guardar."""
@@ -1132,6 +1166,10 @@ class Game:
         m.chunks.clear()
         for k, v in d["player"].items():
             setattr(p, k, v)
+        if p.back not in PACKS:
+            p.back = ""
+        if p.thr not in THROWABLES:
+            p.thr = "bottle"
         p.alive = p.hp > 0
         g.zombies.clear()
         for x, y, kind, hp, mhp in d["zombies"]:
@@ -1597,6 +1635,7 @@ class Game:
         self.update_cars(dt)
         self.update_zombies(dt)
         self.update_projectiles(dt)
+        self.update_bombs(dt)
         if alive_any:
             self.manage_population(dt)
 
@@ -1764,6 +1803,9 @@ class Game:
         if p.weapon in GUNS:
             p.mags[p.weapon] = p.mag
         pile = dict(p.inv)
+        if p.back in PACKS:
+            pile[p.back] = pile.get(p.back, 0) + 1
+        p.back, p.thr = "", "bottle"
         for w, n in p.mags.items():                       # las balas que tenían cargadas las armas
             if n > 0 and w in GUNS:
                 pile[GUNS[w]["ammo"]] = pile.get(GUNS[w]["ammo"], 0) + n
@@ -1929,6 +1971,8 @@ class Game:
             self.auto_consume(p)
         elif a == "use" and isinstance(arg, str) and arg in ITEMS:
             self.use_item(p, arg)
+        elif a == "unequip":
+            self.unequip_pack(p)
         elif a == "take":
             self.take_item(p, arg)
         elif a == "put":
@@ -1950,7 +1994,7 @@ class Game:
             except (TypeError, ValueError):
                 return
             if math.isfinite(x) and math.isfinite(y):
-                self.throw_bottle(p, x, y)
+                self.throw_item(p, x, y)
 
     # --- combate -------------------------------------------------------------------------------------
     def hit_zombie(self, z, dmg, ang, kb, p, stagger=0.45):
@@ -2098,24 +2142,144 @@ class Game:
         else:
             self.melee_attack(p)
 
-    def throw_bottle(self, p, x, y):
+    def throw_item(self, p, x, y):
+        """Lanza el objeto elegido (botella o explosivo) hacia (x, y)."""
         if p.throw_cd > 0:
             return
-        if p.inv.get("bottle", 0) <= 0:
-            self.msg("No tienes botellas vacías.", (255, 190, 90), p)
-            return
+        item = p.thr if p.inv.get(p.thr, 0) > 0 and p.thr in THROWABLES else None
+        if item is None:
+            item = next((i for i in THROWABLES if p.inv.get(i, 0) > 0), None)
+            if item is None:
+                self.msg("No tienes nada que lanzar.", (255, 190, 90), p)
+                return
+            p.thr = item
         ang = math.atan2(y - p.y, x - p.x)
         dist = min(380.0, math.hypot(x - p.x, y - p.y))
         free = self.map.ray_distance(p.x, p.y, ang, dist)
         if free < dist:
             dist = max(10.0, free - 8)
         speed = 380.0
-        self.projs.append([p.x, p.y, math.cos(ang) * speed, math.sin(ang) * speed,
-                           max(0.05, dist / speed), 2, p.pid])
-        self.remove_item(p, "bottle", 1)
+        if item == "bottle":
+            self.projs.append([p.x, p.y, math.cos(ang) * speed, math.sin(ang) * speed,
+                               max(0.05, dist / speed), 2, p.pid])
+        else:
+            self.bombs.append(dict(x=p.x, y=p.y, vx=math.cos(ang) * speed, vy=math.sin(ang) * speed,
+                                   fl=max(0.05, dist / speed), fuse=BOMBS[item]["fuse"], item=item,
+                                   owner=p.pid, tick=0.0))
+        self.remove_item(p, item, 1)
+        if p.inv.get(item, 0) <= 0 and item != "bottle":
+            p.thr = "bottle"
         p.throw_cd = 0.6
         p.swing_t = 0.1
         p.search = None
+
+    def update_bombs(self, dt):
+        keep = []
+        for b in self.bombs:
+            if b["fl"] > 0:                                  # en el aire
+                step = min(dt, b["fl"])
+                b["x"] += b["vx"] * step
+                b["y"] += b["vy"] * step
+                b["fl"] -= dt
+                if b["fl"] > 0:
+                    keep.append(b)
+                    continue
+                b["vx"] = b["vy"] = 0.0
+                b["fl"] = 0.0
+                if b["item"] == "molotov":                   # se rompe al caer
+                    self.start_fire(b["x"], b["y"], b["owner"])
+                    continue
+            b["fuse"] -= dt
+            if b["item"] == "firecracker":
+                b["tick"] -= dt
+                if b["tick"] <= 0:
+                    b["tick"] = 0.3
+                    self.make_noise(b["x"], b["y"], BOMBS["firecracker"]["noise"])
+                    self.add_fx(b["x"], b["y"], "pop")
+            if b["fuse"] > 0:
+                keep.append(b)
+            elif b["item"] != "firecracker":
+                self.explode(b["x"], b["y"], b["item"], b["owner"])
+        self.bombs = keep
+        fk = []
+        for f in self.fires:
+            f[2] -= dt
+            if f[2] <= 0:
+                continue
+            f[4] -= dt
+            if f[4] <= 0:
+                f[4] = 0.25
+                owner = self.players.get(f[3]) or self.p
+                for z in self.zombies:
+                    if z.alive and math.hypot(z.x - f[0], z.y - f[1]) < 48:
+                        self.hit_zombie(z, 9, 0.0, 0, owner, stagger=0.0)
+                for pl in self.players.values():
+                    if pl.alive and math.hypot(pl.x - f[0], pl.y - f[1]) < 48 + PLAYER_R:
+                        self.hurt_player(pl, 3.5, "Fuego")
+            fk.append(f)
+        self.fires = fk
+
+    def start_fire(self, x, y, owner):
+        self.add_fx(x, y, "glass")
+        self.make_noise(x, y, BOMBS["molotov"]["noise"])
+        self.fires.append([x, y, 8.0, owner, 0.0])
+        self.fires = self.fires[-24:]
+
+    def explode(self, x, y, item, owner):
+        cfg = BOMBS[item]
+        rad = cfg["rad"]
+        who = self.players.get(owner) or self.p
+        self.add_fx(x, y, "boom")
+        self.make_noise(x, y, cfg["noise"])
+        self.shake = max(self.shake, 0.35)
+        for z in self.zombies:
+            if not z.alive:
+                continue
+            d = math.hypot(z.x - x, z.y - y)
+            if d < rad:
+                k = 1.0 - 0.6 * d / rad
+                if not self.map.line_clear(x, y, z.x, z.y):
+                    k *= 0.35
+                self.hit_zombie(z, cfg["zd"] * k, math.atan2(z.y - y, z.x - x), cfg["kb"] * k, who, stagger=1.0)
+        for pl in self.players.values():
+            if not pl.alive:
+                continue
+            d = math.hypot(pl.x - x, pl.y - y)
+            if d < rad:
+                k = 1.0 - 0.7 * d / rad
+                if not self.map.line_clear(x, y, pl.x, pl.y):
+                    k *= 0.35
+                self.hurt_player(pl, cfg["pd"] * k, "Explosión")
+        tr = max(1, int(rad * 0.55 // TS) + 1)               # paredes cercanas
+        cx, cy = int(x // TS), int(y // TS)
+        for ty in range(cy - tr, cy + tr + 1):
+            for tx in range(cx - tr, cx + tr + 1):
+                d = math.hypot((tx + 0.5) * TS - x, (ty + 0.5) * TS - y)
+                if d <= rad * 0.55:
+                    self.damage_tile(tx, ty, cfg["td"] * (1.0 - 0.6 * d / (rad * 0.55)), None)
+
+    def unequip_pack(self, p):
+        if p.back not in PACKS:
+            return
+        if inv_weight(p.inv) + ITEM_WEIGHT.get(p.back, 1.0) > CAP + 1e-9:
+            self.msg("Llevas demasiado peso para quitarte la mochila.", (255, 190, 90), p)
+            return
+        item, p.back = p.back, ""
+        self.give(p, item, 1)
+
+    def equip_pack(self, p, item):
+        if p.back == item:
+            return
+        old = p.back
+        w_after = inv_weight(p.inv) - ITEM_WEIGHT.get(item, 1.0) + (ITEM_WEIGHT.get(old, 1.0) if old else 0.0)
+        if w_after > cap_of(item) + 1e-9:
+            self.msg("Llevas demasiado peso para cambiar de mochila.", (255, 190, 90), p)
+            return
+        self.remove_item(p, item, 1)
+        p.back = item
+        if old in PACKS:
+            self.give(p, old, 1)
+        self.msg(f"Te pones: {ITEMS[item]['name']} (capacidad {cap_of(item):.0f} kg)", (200, 220, 255), p)
 
     # --- proyectiles ---------------------------------------------------------------------------------------
     def update_projectiles(self, dt):
@@ -2403,13 +2567,13 @@ class Game:
     # --- inventario e interacción ---------------------------------------------------------------------------------
     def load_factor(self, p):
         """Factor de velocidad por el peso: sin penalización hasta la mitad de la capacidad."""
-        r = inv_weight(p.inv) / cap_of(p.inv)
+        r = inv_weight(p.inv) / cap_of(p.back)
         return 1.0 if r <= 0.5 else 1.0 - 0.35 * min(1.4, (r - 0.5) / 0.5)
 
     def room_for(self, p, item, qty):
         """Cuántas unidades de ese objeto aún te caben."""
         wt = ITEM_WEIGHT.get(item, 0.5)
-        return max(0, min(qty, int((cap_of(p.inv) - inv_weight(p.inv)) / wt + 1e-9)))
+        return max(0, min(qty, int((cap_of(p.back) - inv_weight(p.inv)) / wt + 1e-9)))
 
     def give(self, p, item, qty=1):
         p.inv[item] = p.inv.get(item, 0) + qty
@@ -2431,7 +2595,12 @@ class Game:
         if p.inv.get(item, 0) <= 0 or not p.alive:
             return
         kind = ITEMS[item]["kind"]
-        if kind == "weapon":
+        if kind == "pack":
+            self.equip_pack(p, item)
+        elif kind == "bomb":
+            p.thr = item
+            self.msg(f"Preparado: {ITEMS[item]['name']}. Lánzalo con la tecla de lanzar (V).", (255, 210, 120), p)
+        elif kind == "weapon":
             self.set_weapon(p, item)
             self.msg(f"Equipado: {ITEMS[item]['name']}", (200, 220, 255), p)
         elif item == "flashlight":
@@ -2476,6 +2645,7 @@ class Game:
             self.msg("La munición se carga con la tecla de recargar (con el arma de fuego equipada).",
                      (200, 200, 200), p)
         elif item == "bottle":
+            p.thr = "bottle"
             self.msg("Lánzala con su tecla (V) para atraer zombis.", (200, 200, 200), p)
         elif item == "planks":
             self.msg("Con los tablones construyes: modo construir (B).", (200, 200, 200), p)
@@ -2959,7 +3129,7 @@ class Server:
                   fl=int(pl.flash_on), bat=round(pl.battery, 1), k=pl.kills, al=int(pl.alive),
                   cs=pl.cause, rl=round(pl.reload_t, 2), inv=pl.inv, cond=pl.cond,
                   se=pl.search, wk=pl.work, sw=int(pl.swing_t > 0), hu=int(pl.hurt_ev),
-                  fs=pl.fish, hat=pl.hat, car=-1 if pl.car is None else pl.car)
+                  fs=pl.fish, hat=pl.hat, car=-1 if pl.car is None else pl.car, bk=pl.back, thr=pl.thr)
         if pl.open and pl.open in g.map.containers:
             c = g.map.containers[pl.open]
             me["cv"] = [pl.open[0], pl.open[1], c["kind"], c["inv"]]
@@ -2980,13 +3150,17 @@ class Server:
                     break
         prs = [[round(pr[0], 1), round(pr[1], 1), pr[5]] for pr in g.projs
                if abs(pr[0] - pl.x) < VIEW_R and abs(pr[1] - pl.y) < VIEW_R]
+        bb = [[round(b["x"], 1), round(b["y"], 1), b["item"]] for b in g.bombs
+              if abs(b["x"] - pl.x) < VIEW_R and abs(b["y"] - pl.y) < VIEW_R]
+        fr = [[round(f[0], 1), round(f[1], 1), round(f[2], 1)] for f in g.fires
+              if abs(f[0] - pl.x) < VIEW_R and abs(f[1] - pl.y) < VIEW_R]
         gi = [[it[4], round(it[0]), round(it[1]), it[2], it[3]] for it in g.items.values()
               if abs(it[0] - pl.x) < VIEW_R and abs(it[1] - pl.y) < VIEW_R][:120]
         cars = [[c.id, round(c.x, 1), round(c.y, 1), round(c.angle, 2), int(c.fuel), int(c.hp),
                  -1 if c.driver is None else c.driver, c.ci, int(c.v)]
                 for c in g.cars if abs(c.x - pl.x) < VIEW_R + 200 and abs(c.y - pl.y) < VIEW_R + 200]
         msgs, pl.outbox = pl.outbox, []
-        return {"t": "snap", "cars": cars, "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "msg": msgs,
+        return {"t": "snap", "cars": cars, "gi": gi, "m": round(g.minutes, 2), "me": me, "pl": others, "z": zs, "pr": prs, "bb": bb, "fr": fr, "msg": msgs,
                 "ev": {"tr": g.ev_tracers, "co": g.ev_corpses, "ti": g.ev_tiles, "lo": g.ev_loot,
                        "fx": g.ev_fx, "ct": g.ev_cont}}
 
@@ -3241,6 +3415,7 @@ class ClientGame(Game):
         self.corpses = deque(maxlen=260)
         self.tracers = []
         self.projs = []
+        self.bombs, self.fires = [], []
         self.fx = []
         self.set_settings(welcome.get("gs"))
         self.cars = []
@@ -3287,6 +3462,7 @@ class ClientGame(Game):
         p.kills, p.alive, p.cause, p.reload_t = me["k"], bool(me["al"]), me["cs"], me["rl"]
         p.inv, p.cond, p.search, p.work = me["inv"], me["cond"], me["se"], me.get("wk")
         p.fish, p.hat = me.get("fs"), me.get("hat", p.hat)
+        p.back, p.thr = me.get("bk", ""), me.get("thr", "bottle")
         cv = me.get("cv")
         p.open = (cv[0], cv[1]) if cv else None
         p.cview = cv
@@ -3329,6 +3505,8 @@ class ClientGame(Game):
             new.append(z)
         self.zombies, self._zmap = new, zm
         self.projs = [[x, y, 0, 0, 0, k, 0] for x, y, k in s.get("pr", [])]
+        self.bombs = [dict(x=x, y=y, item=it) for x, y, it in s.get("bb", [])]
+        self.fires = [[x, y, t] for x, y, t in s.get("fr", [])]
         cm, cnew = {}, []
         for cid2, x, y, a, fu, hp, dr, ci, v in s.get("cars", []):
             c = self._cmap.get(cid2)
@@ -3388,7 +3566,7 @@ def run_dedicated(port, seed=None, settings=None):
 # Interfaz: menús (modo inmediato), ajustes, dibujo del mundo y HUD
 # ----------------------------------------------------------------------------
 ITEM_COLORS = {"weapon": (205, 205, 215), "food": (225, 150, 60), "drink": (80, 150, 230),
-               "material": (170, 125, 70)}
+               "material": (170, 125, 70), "pack": (150, 110, 190), "bomb": (230, 70, 60)}
 
 FIELD_RULES = {                      # campo -> (caracteres permitidos o None, longitud máxima)
     "room": ("ABCDEFGHJKLMNPQRSTUVWXYZ23456789abcdefghjklmnpqrstuvwxyz", 6),
@@ -3436,6 +3614,10 @@ class App:
         self.inv_by_cont = False
         self.inv_panel = 0
         self.inv_sel = [0, 0]
+        self.inv_off = [0, 0]                    # primera fila visible de cada lista (scroll)
+        self.inv_follow = False                  # tras mover con el teclado, mostrar la fila elegida
+        self.sb_drag = None                      # barra de scroll que se está arrastrando
+        self.wheel_seen = False
         self.cont_prev = None
         self.cont_ignore = 0.0
         self.cam = (0, 0)
@@ -4183,8 +4365,18 @@ class App:
         sel = self.inv_sel[pan]
         if k in (pygame.K_UP, b["up"]):
             self.inv_sel[pan] = max(0, sel - 1)
+            self.inv_follow = True
         elif k in (pygame.K_DOWN, b["down"]):
             self.inv_sel[pan] = min(max(0, len(rows) - 1), sel + 1)
+            self.inv_follow = True
+        elif k == pygame.K_PAGEUP:
+            self.inv_sel[pan] = max(0, sel - 8)
+            self.inv_follow = True
+        elif k == pygame.K_PAGEDOWN:
+            self.inv_sel[pan] = min(max(0, len(rows) - 1), sel + 8)
+            self.inv_follow = True
+        elif k == pygame.K_r and pan == 0:
+            self.act("unequip")
         elif has and k in (pygame.K_LEFT, pygame.K_RIGHT, pygame.K_TAB, b["left"], b["right"]):
             self.inv_panel = 1 - pan
         elif sel < len(rows):
@@ -4217,7 +4409,7 @@ class App:
             self.inv_panel = 0
         self.text("INVENTARIO", 44, (W // 2, 30), (255, 220, 120), center=True)
         for pan, (x, title, rows) in enumerate((
-                (30, f"TUS OBJETOS ({len(left)})   Peso {inv_weight(p.inv):.1f}/{cap_of(p.inv):.0f} kg", left),
+                (30, f"TUS OBJETOS ({len(left)})   Peso {inv_weight(p.inv):.1f}/{cap_of(p.back):.0f} kg", left),
                 (570, f"{CONT_NAMES.get(cv[0], 'MUEBLE').upper()} ({len(right)})" if cv else "MUEBLE", right))):
             self.ui_panel(x, 56, 500, 510)
             self.text(title, 26, (x + 14, 66), (255, 255, 255) if self.inv_panel == pan else (170, 175, 195))
@@ -4227,27 +4419,70 @@ class App:
                 continue
             sel = max(0, min(self.inv_sel[pan], len(rows) - 1))
             self.inv_sel[pan] = sel
-            start = max(0, min(sel - 4, len(rows) - 10))
+            base, vis = (100, 10) if pan == 1 else (150, 9)
+            if pan == 0:                                      # ranura de espalda (mochila puesta)
+                slot = pygame.Rect(x + 8, 98, 484, 46)
+                pygame.draw.rect(s, (44, 38, 62), slot, border_radius=6)
+                pygame.draw.rect(s, (150, 110, 190), slot, 2, border_radius=6)
+                pygame.draw.rect(s, (30, 26, 44), (slot.x + 8, slot.y + 8, 30, 30), border_radius=4)
+                if p.back in PACKS:
+                    pygame.draw.rect(s, ITEM_COLORS["pack"], (slot.x + 12, slot.y + 12, 22, 22), border_radius=4)
+                    self.text(f"Espalda: {ITEMS[p.back]['name']}", 20, (slot.x + 46, slot.y + 4), (225, 205, 250))
+                    self.text(f"+{PACKS[p.back]:.0f} kg de capacidad", 17, (slot.x + 46, slot.y + 25), (180, 160, 210))
+                    if self.ui_btn(slot.right - 94, slot.y + 7, 86, 32, "Quitar", None, size=20, nav=False):
+                        self.act("unequip")
+                else:
+                    self.text("Espalda: sin mochila", 20, (slot.x + 46, slot.y + 4), (150, 140, 175))
+                    self.text("Equipa una desde la lista", 17, (slot.x + 46, slot.y + 25), (120, 112, 145))
+            maxoff = max(0, len(rows) - vis)
+            off = self.inv_off[pan]
+            if self.inv_follow and self.inv_panel == pan:
+                off = min(off, sel)
+                off = max(off, sel - vis + 1)
+            off = max(0, min(off, maxoff))
+            self.inv_off[pan] = off
+            if len(rows) > vis:                               # barra de scroll arrastrable
+                th_ = vis * 46 - 4
+                thumb_h = max(26, int(th_ * vis / len(rows)))
+                track = pygame.Rect(x + 482, base, 12, th_)
+                pygame.draw.rect(s, (24, 26, 36), track, border_radius=5)
+                if self.click and track.inflate(10, 0).collidepoint(self.click):
+                    self.sb_drag = pan
+                    self.click = None
+                if self.sb_drag == pan:
+                    if pygame.mouse.get_pressed()[0]:
+                        fr = (self.mouse_pos[1] - track.y - thumb_h / 2) / max(1, th_ - thumb_h)
+                        off = max(0, min(maxoff, int(round(fr * maxoff))))
+                        self.inv_off[pan] = off
+                    else:
+                        self.sb_drag = None
+                ty_ = track.y + int((th_ - thumb_h) * off / max(1, maxoff))
+                pygame.draw.rect(s, (255, 210, 90) if self.sb_drag == pan else (130, 138, 170),
+                                 (track.x, ty_, track.w, thumb_h), border_radius=5)
             if not rows:
-                self.text("(vacío)", 26, (x + 14, 110), (150, 155, 175))
-            for n, (item, qty) in enumerate(rows[start:start + 10]):
-                idx = start + n
-                ry = 100 + n * 46
-                rect = pygame.Rect(x + 8, ry, 484, 42)
+                self.text("(vacío)", 26, (x + 14, base + 10), (150, 155, 175))
+            for n, (item, qty) in enumerate(rows[off:off + vis]):
+                idx = off + n
+                ry = base + n * 46
+                rect = pygame.Rect(x + 8, ry, 470, 42)
                 chosen = idx == sel and self.inv_panel == pan
                 pygame.draw.rect(s, (70, 90, 60) if chosen else (34, 37, 50), rect, border_radius=6)
                 if idx == sel:
                     pygame.draw.rect(s, (255, 210, 90) if chosen else (90, 96, 120), rect, 2, border_radius=6)
-                col = ITEM_COLORS.get(ITEMS[item]["kind"], (180, 180, 120))
+                kind = ITEMS[item]["kind"]
+                col = ITEM_COLORS.get(kind, (180, 180, 120))
                 pygame.draw.rect(s, col, (rect.x + 8, rect.y + 12, 18, 18), border_radius=3)
                 label = ITEMS[item]["name"] + (f" x{qty}" if qty > 1 else "")
                 if pan == 0 and item == p.weapon:
                     label += " (equipado)"
+                elif pan == 0 and item == p.thr and (kind == "bomb" or item == "bottle"):
+                    label += " (V)"
                 self.text(label, 22, (rect.x + 34, rect.y + 11), (255, 255, 255))
                 clicked = False
                 if pan == 0:
                     bx = rect.right - 6
-                    btns = [("Usar", 54), ("Tirar", 58), ("Tirar todo", 84)] + ([("Guardar", 70)] if cv else [])
+                    ulab = ("Equipar", 70) if kind == "pack" else (("Preparar", 76) if kind == "bomb" else ("Usar", 50))
+                    btns = [ulab, ("Tirar", 52), ("Todo", 46)] + ([("Guardar", 66)] if cv else [])
                     acts = [("use", item), ("drop", [item, 1]), ("drop", [item, 0])] + \
                            ([("put", [item, 0])] if cv else [])
                     for (lab, w), (a, arg) in reversed(list(zip(btns, acts))):
@@ -4258,7 +4493,7 @@ class App:
                             clicked = True
                 else:
                     bx = rect.right - 6
-                    for (lab, w), (a, arg) in reversed(list(zip((("Tomar 1", 74), ("Tomar todo", 90)),
+                    for (lab, w), (a, arg) in reversed(list(zip((("Tomar 1", 78), ("Tomar todo", 96)),
                                                               (("take", [item, 1]), ("take", [item, 0]))))):
                         bx -= w + 4
                         if self.ui_btn(bx, rect.y + 5, w, 32, lab, None, size=20, nav=False,
@@ -4269,8 +4504,9 @@ class App:
                 if not clicked and self.click and rect.collidepoint(self.click):
                     self.inv_panel, self.inv_sel[pan] = pan, idx
                     self.click = None
-            if len(rows) > 10:
-                self.text(f"{sel + 1}/{len(rows)}", 20, (x + 440, 70), (170, 175, 195))
+            if len(rows) > vis:
+                self.text(f"{sel + 1}/{len(rows)}", 18, (x + 446, 72), (170, 175, 195))
+        self.inv_follow = False
         pan = self.inv_panel
         rows = left if pan == 0 else right
         if rows:
@@ -4278,10 +4514,10 @@ class App:
             self.text(ITEMS[item]["name"] + ": " + ITEM_DESC.get(item, ""), 24, (W // 2, 584), (255, 240, 190),
                       center=True)
         if pan == 0:
-            hint = "Flechas: elegir | Enter: usar | Espacio: tirar 1 | X: tirar todo" + (
+            hint = "Flechas/rueda: mover | Enter: usar | Espacio: tirar 1 | X: tirar todo | R: quitar mochila" + (
                 " | G: guardar | Tab: cambiar a mueble" if cv else "")
         else:
-            hint = "Flechas: elegir | Enter: tomar todo | Espacio: tomar 1 | Tab: volver a tus objetos"
+            hint = "Flechas/rueda: mover | Enter: tomar todo | Espacio: tomar 1 | Tab: volver a tus objetos"
         self.text(hint + " | I/Esc: cerrar", 20, (W // 2, 616), (170, 175, 195), center=True)
         if self.ui_btn(W // 2 - 110, 640, 220, 44, "Cerrar", None, size=28, nav=False):
             self.inv_close()
@@ -4435,6 +4671,21 @@ class App:
             else:
                 pygame.draw.circle(s, (180, 220, 240), (int(x), int(y)), 4)
                 pygame.draw.circle(s, (255, 255, 255), (int(x) - 1, int(y) - 1), 1)
+        for f in g.fires:                                     # fuego de molotov
+            fx_, fy_ = int(f[0] - ox), int(f[1] - oy)
+            fl = 0.5 + 0.5 * math.sin(self.t * 14 + f[0])
+            pygame.draw.circle(s, (200, 60, 20), (fx_, fy_), 30 + int(4 * fl))
+            pygame.draw.circle(s, (250, 140, 30), (fx_, fy_), 20 + int(5 * fl))
+            pygame.draw.circle(s, (255, 230, 120), (fx_, fy_), 9 + int(3 * fl))
+        for b in g.bombs:                                     # explosivos lanzados
+            bx_, by_ = int(b["x"] - ox), int(b["y"] - oy)
+            it = b["item"]
+            col = {"grenade": (70, 100, 60), "molotov": (210, 150, 60), "dynamite": (200, 40, 40),
+                   "firecracker": (230, 200, 60)}.get(it, (200, 200, 200))
+            pygame.draw.rect(s, (20, 20, 20), (bx_ - 5, by_ - 5, 10, 10))
+            pygame.draw.rect(s, col, (bx_ - 4, by_ - 4, 8, 8))
+            if int(self.t * 6) % 2 == 0:
+                pygame.draw.circle(s, (255, 90, 60), (bx_, by_ - 6), 2)
         if p.aiming and p.alive:                              # láser de puntería
             d = m.ray_distance(p.x, p.y, p.angle, 520)
             pygame.draw.line(s, (255, 60, 60), (p.x - ox, p.y - oy),
@@ -4469,6 +4720,11 @@ class App:
                                                            int(y + math.sin(math.radians(a)) * 18 * k)), 4)
             elif kind == "build":
                 pygame.draw.circle(s, (200, 190, 150), (int(x), int(y)), int(6 + 12 * k), 2)
+            elif kind == "boom":
+                pygame.draw.circle(s, (255, 200, 80), (int(x), int(y)), int(10 + 120 * k), 0 if k < 0.35 else 4)
+                pygame.draw.circle(s, (255, 120, 40), (int(x), int(y)), int(6 + 70 * k))
+            elif kind == "pop":
+                pygame.draw.circle(s, (255, 240, 140), (int(x), int(y)), int(4 + 14 * k), 2)
 
         for o in g.other_players():                           # nombres
             self.text(o.name, 20, (o.x - ox, o.y - oy - 22), (170, 255, 190), center=True)
@@ -4661,12 +4917,15 @@ class App:
             if car.fuel <= 0:
                 self.text("SIN GASOLINA", 40, (W // 2, 90), (255, 120, 90), center=True)
         self.text("Arma: " + wtxt, 24, (14, 40), (230, 230, 240))
-        wr = inv_weight(p.inv) / cap_of(p.inv)
-        self.text(f"Tablones: {p.inv.get('planks', 0)}   Peso: {inv_weight(p.inv):.1f}/{cap_of(p.inv):.0f} kg" +
+        wr = inv_weight(p.inv) / cap_of(p.back)
+        self.text(f"Tablones: {p.inv.get('planks', 0)}   Peso: {inv_weight(p.inv):.1f}/{cap_of(p.back):.0f} kg" +
                   ("  (cargado: vas más lento)" if wr > 0.5 else ""), 22, (14, 62),
                   (255, 170, 120) if wr > 0.85 else (215, 190, 140))
         if p.flash_on:
             self.text(f"Linterna {int(p.battery)}%", 22, (14, 82), (255, 240, 160))
+        thr = p.thr if p.inv.get(p.thr, 0) > 0 else None
+        if thr:
+            self.text(f"[V] {ITEMS[thr]['name']} x{p.inv[thr]}", 22, (W // 2, H - 22), (255, 210, 130), center=True)
 
         if self.mode != "solo":
             n = len(g.other_players()) + 1
@@ -4708,7 +4967,10 @@ class App:
         x, y = W - 200, 176 if self.show_map else 24
         if owned:
             self.text("INVENTARIO (I = abrir)", 20, (x, y - 18), (190, 190, 205))
-        for i, item in enumerate(owned):
+        maxrows = max(3, (H - 8 - y) // 22)
+        if len(owned) > maxrows:
+            self.text(f"... y {len(owned) - maxrows + 1} más (I)", 20, (x + 6, y + (maxrows - 1) * 22 + 3), (190, 190, 205))
+        for i, item in enumerate(owned[:maxrows - 1] if len(owned) > maxrows else owned):
             rect = pygame.Rect(x, y + i * 22, 190, 20)
             equipped = (item == p.weapon)
             pygame.draw.rect(s, (60, 110, 70) if equipped else (30, 32, 42), rect, border_radius=4)
@@ -4799,6 +5061,11 @@ class App:
                     self.quit()
                 elif e.type == pygame.KEYDOWN:
                     self.on_keydown(e)
+                elif e.type == pygame.MOUSEWHEEL:
+                    self.wheel_seen = True
+                    self.on_wheel(-e.y)
+                elif e.type == pygame.MOUSEBUTTONDOWN and e.button in (4, 5) and not self.wheel_seen:
+                    self.on_wheel(-1 if e.button == 4 else 1)
                 elif e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
                     if self.state == "play" and not self.menu_open and self.chat is None and not self.inv_open:
                         self.on_mouse_down(e.pos)
@@ -4809,6 +5076,15 @@ class App:
             t0 = time.perf_counter()
             pygame.display.flip()
             self.prof["flip"] = self.prof.get("flip", 0.0) * 0.9 + (time.perf_counter() - t0) * 0.1
+
+    def on_wheel(self, dy):
+        """Rueda del ratón: desplaza la lista (tus objetos o el mueble) que está bajo el cursor."""
+        if self.state != "play" or not self.inv_open or not dy:
+            return
+        pan = 0 if self.mouse_pos[0] < 560 else 1
+        if pan == 1 and self.cont_view() is None:
+            return
+        self.inv_off[pan] += int(dy) * 2
 
     def on_keydown(self, e):
         if self.rebind:                                       # esperando la nueva tecla
